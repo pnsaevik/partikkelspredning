@@ -33,6 +33,35 @@ our code) is left blank here; a real deployment needs it set, either to a
 real storage account connection string or `UseDevelopmentStorage=true`
 against the [Azurite emulator](https://learn.microsoft.com/azure/storage/common/storage-use-azurite).
 
+## Continuous deployment (GitHub Actions)
+
+Pushing a tag matching `vX.Y.Z` (e.g. `v0.1.2`) triggers
+`.github/workflows/deploy.yml`, which runs the test suite and, if it
+passes and the tag matches `pyproject.toml`'s `[project].version`, deploys
+`api/` to the `partikkelspredning-api` Function App the same way the manual
+steps below do (`build_vendor_wheel.sh` then a remote-build deploy) - no
+local `func` install or Cloud Shell needed for routine releases.
+
+The workflow authenticates to Azure via OIDC (a federated credential on an
+Azure AD app registration scoped to this repo's `production` GitHub
+environment) rather than a stored long-lived secret. One-time setup for a
+new deployment target, already done for `partikkelspredning-api`:
+
+1. In the Azure AD tenant: an app registration + service principal, with a
+   federated credential (`repo:<org>/<repo>:environment:production`,
+   issuer `https://token.actions.githubusercontent.com`) and a *Website
+   Contributor* role assignment scoped to the function app's resource
+   group (not broader - it doesn't need access to unrelated resources).
+2. In the GitHub repo: an environment named `production` (Settings ->
+   Environments), and repository variables `AZURE_CLIENT_ID`,
+   `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` set to that app
+   registration's values (Settings -> Secrets and variables -> Actions ->
+   Variables tab - these identify the app registration but aren't secrets
+   themselves, since OIDC needs no client secret).
+
+The manual steps below remain useful for a first-time deploy to a new
+Function App, or for deploying from a local checkout without waiting on CI.
+
 ## Deploy to Azure
 
 ```bash
