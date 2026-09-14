@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `.github/workflows/deploy.yml`: pushing a tag matching `vX.Y.Z` runs the
+  test suite, then deploys `api/` to the `partikkelspredning-api` Azure
+  Function App (authenticating via OIDC, no stored secret) if the tag
+  matches `pyproject.toml`'s version. See api/README.md's "Continuous
+  deployment" section for one-time setup.
+
 ## [0.1.1] - 2026-09-14
 
 ### Changed
