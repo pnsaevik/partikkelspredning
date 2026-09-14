@@ -77,9 +77,38 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy api/ to Azure Functions
+        # partikkelspredning-api is on the Flex Consumption plan, which needs
+        # `remote-build` (not `scm-do-build-during-deployment` /
+        # `enable-oryx-build` - those are for the classic Consumption/Premium
+        # plans and are explicitly documented as not to be set here). Without
+        # it, Kudu skips the Oryx build ("remotebuild = false" in its deploy
+        # log), nothing in requirements.txt gets installed, and the Python
+        # worker silently indexes zero functions - the action still reports
+        # success even though the app is left serving the default "up and
+        # running" placeholder page. The smoke-test step below exists
+        # specifically to catch that failure mode instead of trusting this
+        # step's own success/failure signal.
         uses: Azure/functions-action@v1
         with:
           app-name: partikkelspredning-api
           package: api
-          scm-do-build-during-deployment: true
-          enable-oryx-build: true
+          sku: flexconsumption
+          remote-build: true
+
+      - name: Smoke-test the deployed app
+        # Azure/functions-action can report success even when the app ends
+        # up serving zero functions (see note above) - so verify directly
+        # that a real route responds instead of trusting that step alone.
+        run: |
+          url="https://partikkelspredning-api.azurewebsites.net/api/openapi.json"
+          for i in $(seq 1 10); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "$url")"
+            if [ "$code" = "200" ]; then
+              echo "OK: $url returned 200"
+              exit 0
+            fi
+            echo "Attempt $i: $url returned $code, retrying..."
+            sleep 15
+          done
+          echo "::error::$url never returned 200 - deployment likely did not take effect"
+          exit 1
