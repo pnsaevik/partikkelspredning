@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-09-14
+
+### Fixed
+
+- `deploy.yml`'s top-level `permissions` only granted `contents: read`, but
+  the nested `deploy` job (`action_deploy.yml`, called via `uses:`)
+  requests `id-token: write` for OIDC login to Azure. A reusable-workflow
+  job can never be granted more permissions than the caller itself has, so
+  every tag push failed at dispatch time with "The nested job 'deploy' is
+  requesting 'id-token: write', but is only allowed 'id-token: none'" and
+  0 jobs ever ran - a `startup_failure` invisible until a real tag push
+  exercised this path (the CI restructuring in [0.1.3] was never tagged).
+  Added `id-token: write` to `deploy.yml`'s top-level `permissions`.
+
 ## [0.1.4] - 2026-09-14
 
 ### Changed (temporary diagnostic)
