@@ -1,12 +1,13 @@
 # API stub - Azure Functions adapter
 
-This folder is a thin Azure Functions **adapter**: it is the only place
-(besides `../src/partikkelspredning/adapters/azure/`) that imports Azure
-SDKs. `function_app.py` hosts the platform-agnostic FastAPI application
-from [`partikkelspredning`](../src/partikkelspredning) directly inside
-Azure Functions via ASGI (`func.AsgiFunctionApp`) - it is the *same* app
-`uvicorn partikkelspredning.main:app` runs locally, not a reimplementation.
-See [the root README](../README.md) for the full architecture.
+This folder is a thin Azure Functions **adapter**: it is one of only two
+places (besides [`../src/partikkelspredning/adapters/azure/`](../src/partikkelspredning/adapters/azure))
+that import Azure SDKs. `function_app.py` declares one HTTP-triggered Azure
+Function per endpoint; each is a thin wrapper that translates between
+`azure.functions.HttpRequest`/`HttpResponse` and `JobService` - the same
+service class `partikkelspredning.api.routes_jobs`/`routes_form` call for
+local, uvicorn-hosted development (see `function_app.py`'s module
+docstring). See [the root README](../README.md) for the full architecture.
 
 ## Run locally
 
@@ -22,11 +23,11 @@ pip install -e ..   # partikkelspredning itself, editable - see "How packaging w
 func start
 ```
 
-Then visit `http://localhost:7071/docs` for the interactive OpenAPI docs
-(same endpoints as running `uvicorn` directly - see the root README).
-`host.json` sets `extensions.http.routePrefix` to `""` (no `/api` prefix) -
-see "Why `routePrefix` is empty" below for why that's required, not just a
-style choice.
+The same endpoints as running `uvicorn` directly are then available at
+`http://localhost:7071` (see the root README) - `host.json` sets
+`extensions.http.routePrefix` to `""` (no `/api` prefix) so the routes match
+exactly, including `GET /health` (a liveness check with no equivalent in
+the FastAPI app, used by the deploy workflow's smoke test below).
 
 `local.settings.json` defaults `PARTIKKEL_STORAGE_MODE` to `local`, so
 `func start` works with no Azure Storage account for the *application's
@@ -38,11 +39,11 @@ against the [Azurite emulator](https://learn.microsoft.com/azure/storage/common/
 
 ## Continuous integration and deployment (GitHub Actions)
 
-CI is split into three gates (workflow philosophy and `.github/scripts/`
-adapted from [ladim](https://github.com/pnsaevik/ladim)'s):
+CI is split into three gates:
 
 * **Every push**, any branch (`workflow_push.yml`): runs the test suite
-  (`action_pytest.yml`).
+  (`action_pytest.yml`), including `tests/test_function_app.py`'s direct
+  unit tests of the functions in `function_app.py`.
 * **Every pull request into `main`** (`workflow_pr_main.yml`): checks that
   `pyproject.toml`'s `[project].version` was bumped - and not decreased -
   relative to the PR's base, and that `CHANGELOG.md` has a `## [<that
@@ -55,7 +56,9 @@ adapted from [ladim](https://github.com/pnsaevik/ladim)'s):
   to the `partikkelspredning-api` Function App the same way the manual
   steps below do (pin `partikkelspredning` to this commit, then a
   remote-build deploy, `action_deploy.yml`) - no local `func` install or
-  Cloud Shell needed for routine releases.
+  Cloud Shell needed for routine releases. `deploy.yml` can also be run
+  on demand against any branch (`gh workflow run deploy.yml --ref
+  <branch>`), skipping the tag checks, to test a deploy before merging.
 
 The workflow authenticates to Azure via OIDC (a federated credential on an
 Azure AD app registration scoped to this repo's `production` GitHub
@@ -104,25 +107,6 @@ git checkout -- requirements.txt   # discard the local edit above
 `local.settings.json` is for local development only - it is git-ignored and
 never deployed (see `.funcignore`); app settings for the deployed function
 are configured on the Azure resource itself, as above.
-
-### Why `routePrefix` is empty
-
-`host.json` sets `extensions.http.routePrefix` to `""`. This isn't a style
-choice - the Python Functions host has a bug
-([Azure/azure-functions-python-worker#1310](https://github.com/Azure/azure-functions-python-worker/issues/1310))
-where an `AsgiFunctionApp` combined with any non-empty `routePrefix`
-(including the default, `"api"`) makes the host build the invalid ASP.NET
-Core route template `api//{*route}` (a double slash) for the catch-all
-route - a `RoutePatternException` at startup, on every single instance,
-forever, since it happens before any of our code runs. This is what caused
-the persistent 503s that motivated the diagnostics in this repo's commit
-history around [0.1.4]-[0.1.6]: the deploy step itself always succeeded,
-but the Functions host silently crash-looped on startup and never served a
-single request - confirmed via Application Insights, not guessable from
-the deploy logs alone. With `routePrefix: ""`, the app is reached at the site root (e.g.
-`/openapi.json`, `/docs`) both locally and once deployed, not under
-`/api/` - see "Run locally" above. `PARTIKKEL_API_BASE_URL` (above) must
-match: no trailing `/api`.
 
 ### How packaging works
 

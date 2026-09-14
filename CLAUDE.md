@@ -75,11 +75,14 @@ is the sole composition root: it picks concrete adapters based on
 `PARTIKKEL_STORAGE_MODE` (`local`/`azure`) and wires them into a
 `JobService` — nothing above it should know which adapters were chosen.
 
-Both hosting modes run the *same* FastAPI app, never a reimplementation:
+Both hosting modes call into the *same* `services`/`domain`/`ports` layer,
+never a reimplementation of the business logic — only the HTTP transport
+differs:
 
 ```
 local:  browser -> uvicorn -> FastAPI app (partikkelspredning.main:app)
-Azure:  browser -> Azure Functions -> same FastAPI app, via ASGI (api/function_app.py, func.AsgiFunctionApp)
+Azure:  browser -> Azure Functions -> HTTP-triggered functions (api/function_app.py),
+                                       each a thin wrapper around the same JobService
 ```
 
 `api/` at the repo root is a thin Azure Functions adapter folder (separate

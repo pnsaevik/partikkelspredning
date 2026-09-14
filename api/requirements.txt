@@ -6,21 +6,17 @@ azure-data-tables
 azure-storage-queue
 azure-storage-blob
 
-# partikkelspredning itself (the FastAPI app function_app.py hosts via
-# ASGI) is deliberately NOT pinned here. Only this `api/` folder is
-# uploaded for `func azure functionapp publish`'s remote build, so `..`
-# (the repo root, where partikkelspredning's pyproject.toml lives) doesn't
-# exist at install time - previously worked around by vendoring a wheel
-# built from local disk, which needed a version pin here kept in sync with
-# pyproject.toml by hand (a mismatch silently broke the install).
+# partikkelspredning itself (function_app.py's HTTP trigger functions call
+# straight into its JobService/config layer) is deliberately NOT pinned
+# here. Only this `api/` folder is uploaded for `func azure functionapp
+# publish`'s remote build, so `..` (the repo root, where partikkelspredning's
+# pyproject.toml lives) doesn't exist at install time.
 #
 # Instead, action_deploy.yml appends a
 # `partikkelspredning @ git+https://github.com/<owner>/<repo>.git@<sha>`
 # line to *this checked-out copy* of the file, pinned to the exact commit
-# being deployed, right before packaging api/ for upload - it can never
-# drift out of sync, and there's no wheel-building step or vendor/
-# directory to maintain. This requires that commit to already be pushed to
-# GitHub (true for every CI-triggered deploy; for a manual deploy from a
-# local checkout, push first). For local development, install
-# partikkelspredning separately in editable mode instead - see this
-# folder's README.
+# being deployed, right before packaging api/ for upload. This requires that
+# commit to already be pushed to GitHub (true for every CI-triggered deploy;
+# for a manual deploy from a local checkout, push first). For local
+# development, install partikkelspredning separately in editable mode
+# instead - see this folder's README.
