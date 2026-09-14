@@ -1,0 +1,7 @@
+azure-functions
+
+# Platform-agnostic business logic (see ../src/partikkelspredning), installed
+# in editable mode from the sibling package. This is the only "extra"
+# dependency this adapter has - it is intentionally not another Azure SDK.
+-e ..
+

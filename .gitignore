@@ -5,3 +5,8 @@ build/
 dist/
 .venv/
 venv/
+.pytest_cache/
+
+# Azure Functions
+api/local.settings.json
+api/.python_packages/
