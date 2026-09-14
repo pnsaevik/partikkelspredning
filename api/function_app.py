@@ -1,34 +1,29 @@
 """Azure Functions adapter.
 
-This module is the ONLY place in the project that imports `azure.functions`.
-It wires Azure's decorator-based (v2) programming model to the
-platform-agnostic handlers in `partikkelspredning.handlers`, translating
-Azure's HttpRequest/HttpResponse types to and from plain Python.
+This module (together with everything under
+`partikkelspredning.adapters.azure`) is the only place that imports Azure
+SDKs. It hosts the exact same FastAPI application used for local
+development directly inside Azure Functions, using the standard ASGI
+hosting support (`func.AsgiFunctionApp`) instead of re-declaring every route
+as a separate Azure Function - so the two hosting modes can never drift
+apart:
 
-The actual application logic lives in `partikkelspredning.handlers` and has
-no dependency on Azure. Swapping to another platform (Google Cloud
-Functions, AWS Lambda, a FastAPI + container app, ...) means writing a new
-adapter module like this one - the logic itself never needs to change.
+    local:  browser -> uvicorn -> FastAPI app (partikkelspredning.main:app)
+    Azure:  browser -> Azure Functions -> the *same* FastAPI app, via ASGI
 
-New endpoints are added by: writing the logic as a plain function in
-`partikkelspredning.handlers`, then decorating a thin wrapper here with
-`@app.route(...)` that calls it.
+Which storage adapters that FastAPI app itself uses (local CSV files vs.
+Azure Table/Queue/Blob Storage) is controlled independently by the
+`PARTIKKEL_STORAGE_MODE` app setting/environment variable - see the root
+README and `partikkelspredning.config`. A deployed Function App will
+normally set `PARTIKKEL_STORAGE_MODE=azure` plus
+`AZURE_STORAGE_CONNECTION_STRING`.
+
+New endpoints are added in `partikkelspredning.api` (a router + a line in
+`partikkelspredning.api.app.create_app`), never here - this file never needs
+to change when the API grows.
 """
-import json
-
 import azure.functions as func
 
-from partikkelspredning import handlers
+from partikkelspredning.main import app as fastapi_app
 
-app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
-
-
-@app.route(route="hello", methods=["GET"])
-def hello(req: func.HttpRequest) -> func.HttpResponse:
-    """GET /api/hello -> {"message": "Hello, world!"}"""
-    result = handlers.hello()
-    return func.HttpResponse(
-        json.dumps(result),
-        mimetype="application/json",
-        status_code=200,
-    )
+app = func.AsgiFunctionApp(app=fastapi_app, http_auth_level=func.AuthLevel.ANONYMOUS)

@@ -1,7 +1,13 @@
 azure-functions
 
-# Platform-agnostic business logic (see ../src/partikkelspredning), installed
-# in editable mode from the sibling package. This is the only "extra"
-# dependency this adapter has - it is intentionally not another Azure SDK.
--e ..
+# Storage SDKs used by partikkelspredning.adapters.azure when
+# PARTIKKEL_STORAGE_MODE=azure (see ../src/partikkelspredning/composition.py).
+azure-data-tables
+azure-storage-queue
+azure-storage-blob
 
+# Platform-agnostic application (see ../src/partikkelspredning), installed in
+# editable mode from the sibling package - this is the FastAPI app that
+# function_app.py hosts via ASGI. See this folder's README's "Known caveat"
+# about why this doesn't yet work for `func azure functionapp publish`.
+-e ..

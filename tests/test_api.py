@@ -1,0 +1,102 @@
+"""A small number of FastAPI endpoint tests.
+
+Uses the real local (CSV-backed) adapters via `local_settings` (see
+conftest.py) rather than fakes, so these also exercise the composition root
+end to end - not just the service layer.
+"""
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+from partikkelspredning.api.app import create_app
+
+
+@pytest.fixture
+def client(local_settings):
+    app = create_app(settings=local_settings)
+    return TestClient(app)
+
+
+def _valid_payload():
+    return {
+        "user_email": "user@example.com",
+        "parameters": {"resolution": 100, "duration": 1.5, "experiment": "demo"},
+    }
+
+
+def test_submit_job_returns_201_with_job_id(client):
+    response = client.post("/jobs", json=_valid_payload())
+    assert response.status_code == 201
+    body = response.json()
+    assert body["status"] == "queued"
+    assert "job_id" in body
+
+
+def test_submit_job_rejects_invalid_parameters(client):
+    response = client.post("/jobs", json={"user_email": "user@example.com", "parameters": {}})
+    assert response.status_code == 422
+
+
+def test_submit_job_rejects_invalid_email(client):
+    response = client.post("/jobs", json={"user_email": "not-an-email", **{"parameters": _valid_payload()["parameters"]}})
+    assert response.status_code == 422
+
+
+def test_get_job_returns_submitted_job(client):
+    job_id = client.post("/jobs", json=_valid_payload()).json()["job_id"]
+    response = client.get(f"/jobs/{job_id}")
+    assert response.status_code == 200
+    assert response.json()["job_id"] == job_id
+
+
+def test_get_unknown_job_returns_404(client):
+    response = client.get("/jobs/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_claim_returns_204_when_nothing_queued(client):
+    response = client.post("/jobs/claim", json={"worker_id": "worker-1"})
+    assert response.status_code == 204
+
+
+def test_claim_then_complete_full_lifecycle(client):
+    job_id = client.post("/jobs", json=_valid_payload()).json()["job_id"]
+
+    claim_response = client.post("/jobs/claim", json={"worker_id": "worker-1"})
+    assert claim_response.status_code == 200
+    assert claim_response.json()["job_id"] == job_id
+
+    complete_response = client.post(
+        f"/jobs/{job_id}/complete",
+        json={"worker_id": "worker-1", "result_reference": "out.nc"},
+    )
+    assert complete_response.status_code == 200
+    body = complete_response.json()
+    assert body["status"] == "completed"
+    assert body["result_url"] is not None
+
+
+def test_fail_after_claim(client):
+    job_id = client.post("/jobs", json=_valid_payload()).json()["job_id"]
+    client.post("/jobs/claim", json={"worker_id": "worker-1"})
+
+    response = client.post(f"/jobs/{job_id}/fail", json={"worker_id": "worker-1", "error_message": "boom"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
+
+
+def test_complete_without_claiming_is_a_conflict(client):
+    job_id = client.post("/jobs", json=_valid_payload()).json()["job_id"]
+    response = client.post(f"/jobs/{job_id}/complete", json={"worker_id": "worker-1", "result_reference": "out.nc"})
+    assert response.status_code == 409
+
+
+def test_generate_form_returns_html(client):
+    response = client.post(
+        "/form",
+        json={"parameters": [{"name": "resolution", "type": "integer", "description": "Grid resolution"}]},
+    )
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert 'name="resolution"' in response.text

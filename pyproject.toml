@@ -8,9 +8,20 @@ version = "0.1.0"
 description = "Partikkelspredning"
 readme = "README.md"
 requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.110",
+    "pydantic>=2",
+    "email-validator",
+    "pandas",
+]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "httpx2"]
+local = ["uvicorn[standard]"]
+# Only needed when PARTIKKEL_STORAGE_MODE=azure is actually used (see
+# src/partikkelspredning/composition.py) - not required for local
+# development or the default test suite.
+azure = ["azure-functions", "azure-data-tables", "azure-storage-queue", "azure-storage-blob"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -18,3 +29,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "azure_integration: requires a real/emulated Azure Storage account; excluded by default (see tests/azure_integration/test_azure_adapters.py)",
+]
+addopts = "-m 'not azure_integration'"
