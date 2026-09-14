@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-09-14
+
+### Changed
+
+- Replaced `api/function_app.py`'s `func.AsgiFunctionApp` hosting of the
+  FastAPI app with explicit HTTP-triggered Azure Functions, one per
+  endpoint (`jobs`, `jobs/{job_id}`, `jobs/claim`,
+  `jobs/{job_id}/complete`, `jobs/{job_id}/fail`, `form`). Each is a thin
+  wrapper that translates `azure.functions.HttpRequest`/`HttpResponse`
+  straight into calls on the same `JobService` the FastAPI routes use,
+  reusing the same request/response schemas
+  (`partikkelspredning.api.schemas`) and domain error handling - no
+  business logic is duplicated between the two hosting modes.
+- Added `GET /health`, a liveness check with no FastAPI equivalent, and
+  pointed the deploy workflow's smoke test at it instead of
+  `/openapi.json` (which only the FastAPI app serves).
+- Added `tests/test_function_app.py`, unit-testing the new functions
+  directly against the real local (CSV-backed) adapters, mirroring
+  `tests/test_api.py`'s coverage of the equivalent FastAPI routes.
+  `azure-functions` (needed to build the `HttpRequest`/`HttpResponse`
+  objects these tests use, not for any cloud access) is now part of the
+  `dev` extra, and `api/` was added to `pythonpath` in `pyproject.toml` so
+  tests can import `function_app`.
+
 ## [0.1.7] - 2026-09-14
 
 ### Fixed

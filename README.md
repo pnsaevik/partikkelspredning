@@ -48,14 +48,17 @@ Layered / ports-and-adapters:
 
 ```
 local:  browser -> uvicorn -> FastAPI app (partikkelspredning.main:app)
-Azure:  browser -> Azure Functions -> the *same* FastAPI app, via ASGI
+Azure:  browser -> Azure Functions -> HTTP-triggered functions
                                        (api/function_app.py)
 ```
 
-The Azure Functions adapter doesn't reimplement the API - it hosts the
-identical FastAPI app via `func.AsgiFunctionApp` (the standard way to run an
-ASGI app inside Azure Functions), so the two hosting modes can't drift
-apart.
+The Azure Functions adapter doesn't reimplement the business logic: each
+HTTP-triggered function in `api/function_app.py` is a thin wrapper that
+translates a request straight into a call on the same `JobService` the
+FastAPI routes use, reusing the same request/response schemas and domain
+error handling - so the two hosting modes can't drift apart on anything but
+HTTP transport. Unlike the FastAPI app, it has no interactive `/docs` (see
+"API" below).
 
 ### Separation of concerns
 
@@ -119,8 +122,10 @@ this backend is concerned.
 
 ## API
 
-Interactive OpenAPI docs are available at `/docs` (FastAPI's default) once
-the app is running.
+Interactive OpenAPI docs are available at `/docs` (FastAPI's default) when
+running locally via `uvicorn`. The deployed Azure Function App serves the
+same endpoints (see "Azure deployment" below) but has no such docs page,
+since it isn't hosting the FastAPI app.
 
 | Method & path | Purpose |
 |---|---|
@@ -269,8 +274,9 @@ AZURE_STORAGE_CONNECTION_STRING="..." pytest -m azure_integration
 
 ## Azure deployment
 
-See [`api/README.md`](api/README.md) for how `api/function_app.py` hosts
-this same application inside Azure Functions, and how to deploy it.
+See [`api/README.md`](api/README.md) for how `api/function_app.py`'s
+HTTP-triggered functions expose this application inside Azure Functions,
+and how to deploy it.
 
 ## Scope of this iteration
 

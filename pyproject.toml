@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "partikkelspredning"
-version = "0.1.7"
+version = "0.1.8"
 description = "Partikkelspredning"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -16,7 +16,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "httpx2"]
+dev = [
+    "pytest",
+    "httpx2",
+    # Lets tests/test_function_app.py exercise api/function_app.py's HTTP
+    # trigger functions directly (building func.HttpRequest/HttpResponse
+    # objects needs no cloud credentials or emulator, unlike the "azure"
+    # extra's Table/Queue/Blob SDKs - see tests/azure_integration/).
+    "azure-functions",
+]
 local = ["uvicorn[standard]"]
 # Only needed when PARTIKKEL_STORAGE_MODE=azure is actually used (see
 # src/partikkelspredning/composition.py) - not required for local
@@ -28,7 +36,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+# "api" is a separate deployment unit (see api/README.md), deliberately
+# outside src/ and not installed as part of the partikkelspredning package -
+# added here purely so tests/test_function_app.py can `import function_app`.
+pythonpath = ["src", "api"]
 markers = [
     "azure_integration: requires a real/emulated Azure Storage account; excluded by default (see tests/azure_integration/test_azure_adapters.py)",
 ]

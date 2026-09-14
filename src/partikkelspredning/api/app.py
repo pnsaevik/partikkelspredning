@@ -2,8 +2,10 @@
 
 Building the app is separated from the module-level `app = ...` object (see
 `partikkelspredning.main`) so tests can call `create_app(settings=...)` with
-whatever `Settings` they need, and `api/function_app.py` can host the exact
-same app under Azure Functions.
+whatever `Settings` they need. This app is used for local, uvicorn-hosted
+development and by `tests/test_api.py`; a deployed Azure Function App runs
+its own HTTP-triggered functions instead (`api/function_app.py`) rather
+than hosting this app object.
 """
 from __future__ import annotations
 

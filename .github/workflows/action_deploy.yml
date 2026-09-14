@@ -54,7 +54,7 @@ jobs:
         # up serving zero functions (see note above) - so verify directly
         # that a real route responds instead of trusting that step alone.
         run: |
-          url="https://partikkelspredning-api.azurewebsites.net/openapi.json"
+          url="https://partikkelspredning-api.azurewebsites.net/health"
           for i in $(seq 1 10); do
             code="$(curl -s -o /dev/null -w '%{http_code}' "$url")"
             if [ "$code" = "200" ]; then

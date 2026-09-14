@@ -1,7 +1,7 @@
 name: deploy
 
-# Deploys api/ (the Azure Functions ASGI host for partikkelspredning.main:app -
-# see api/README.md) to the existing Flex Consumption Function App
+# Deploys api/ (the Azure Functions adapter for partikkelspredning - see
+# api/README.md) to the existing Flex Consumption Function App
 # `partikkelspredning-api` in resource group `partikkelspredning-rg`.
 #
 # Triggered by pushing a tag like v0.1.2, but only actually deploys if that
