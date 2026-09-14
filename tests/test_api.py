@@ -33,9 +33,14 @@ def test_submit_job_returns_201_with_job_id(client):
     assert "job_id" in body
 
 
-def test_submit_job_rejects_invalid_parameters(client):
-    response = client.post("/jobs", json={"user_email": "user@example.com", "parameters": {}})
-    assert response.status_code == 422
+def test_submit_job_accepts_arbitrary_parameters(client):
+    """No predefined schema is enforced - any JSON object is accepted as-is;
+    see the root README on why (the compute server decides runnability)."""
+    response = client.post(
+        "/jobs", json={"user_email": "user@example.com", "parameters": {"anything": "goes"}}
+    )
+    assert response.status_code == 201
+    assert response.json()["parameters"] == {"anything": "goes"}
 
 
 def test_submit_job_rejects_invalid_email(client):

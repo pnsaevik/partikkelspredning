@@ -1,31 +1,29 @@
-"""Simulation parameter definitions and validation.
+"""Simulation parameter *description*, for the static form generator only.
 
-A `ParameterDefinition` describes one input a simulation expects (name,
-type, human-readable description). A list of these is the single source of
-truth shared by:
+A `ParameterDefinition` describes one input a simulation form should collect
+(name, type, human-readable description). It exists solely so
+`partikkelspredning.services.form_service` can render one HTML input per
+definition for the `POST /form` convenience endpoint - a static-site
+generator for a particular kind of form (e.g. resolution/duration/
+experiment), not deployed anywhere by this repo.
 
-* the backend (`validate_parameters`, called from job submission), and
-* the static form generator (`partikkelspredning.services.form_service`),
-  which renders one HTML input per definition.
-
-Keeping both driven by the same model is what avoids duplicating validation
-rules between frontend and backend. The frontend's own validation (baked
-into the generated HTML) is only ever a convenience - `validate_parameters`
-below is the sole authority, and is always re-run server-side regardless of
-what the client already checked.
+This is deliberately *not* a schema job submission is validated against:
+`POST /jobs` accepts parameters as an arbitrary JSON object (see
+`partikkelspredning.api.schemas.SubmitJobRequest`) with no predefined
+parameter set. Whether a given job's parameters are actually usable is for
+the (not-yet-implemented) compute server to decide once it claims the job -
+see the root README's "How the compute server is expected to interact with
+the API".
 """
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
-from partikkelspredning.domain.errors import ParameterValidationError
-
 
 class ParameterType(str, Enum):
-    """The only parameter types the system understands."""
+    """The input types `POST /form` knows how to render a field for."""
 
     INTEGER = "integer"
     FLOAT = "float"
@@ -33,88 +31,12 @@ class ParameterType(str, Enum):
 
 
 class ParameterDefinition(BaseModel):
-    """Describes one simulation input parameter.
+    """Describes one field of a generated form.
 
-    Reused as-is by job submission validation, the `/form` HTML generator,
-    and (per the project brief) potentially future documentation/API
-    generation - there is deliberately no separate "frontend" or "API"
-    copy of this model.
+    Used only by `POST /form` (see the module docstring) - not by job
+    submission.
     """
 
     name: str = Field(..., min_length=1)
     type: ParameterType
     description: str = ""
-
-
-_INVALID = object()
-
-
-def validate_parameters(
-    definitions: List[ParameterDefinition],
-    values: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Validate and coerce submitted values against their definitions.
-
-    Returns a new dict containing exactly the defined parameters, coerced to
-    their declared Python type (e.g. `"3"` -> `3` for an integer parameter).
-    Raises `ParameterValidationError` listing every problem found - missing
-    parameters, unknown parameters, and values of the wrong type - instead
-    of stopping at the first one.
-    """
-    errors: List[str] = []
-    result: Dict[str, Any] = {}
-    defined_names = {definition.name for definition in definitions}
-
-    for definition in definitions:
-        if definition.name not in values:
-            errors.append(f"Missing required parameter '{definition.name}'")
-            continue
-        coerced = _coerce(definition, values[definition.name], errors)
-        if coerced is not _INVALID:
-            result[definition.name] = coerced
-
-    for name in values:
-        if name not in defined_names:
-            errors.append(f"Unknown parameter '{name}'")
-
-    if errors:
-        raise ParameterValidationError(errors)
-    return result
-
-
-def _coerce(definition: ParameterDefinition, raw_value: Any, errors: List[str]) -> Any:
-    # bool is a subclass of int in Python; reject it explicitly for numeric
-    # parameters so `True`/`False` aren't silently accepted as 1/0.
-    if isinstance(raw_value, bool) and definition.type in (ParameterType.INTEGER, ParameterType.FLOAT):
-        errors.append(f"Parameter '{definition.name}' must be a number, not a boolean")
-        return _INVALID
-
-    if definition.type == ParameterType.INTEGER:
-        if isinstance(raw_value, int):
-            return raw_value
-        if isinstance(raw_value, str):
-            try:
-                return int(raw_value)
-            except ValueError:
-                pass
-        errors.append(f"Parameter '{definition.name}' must be an integer")
-        return _INVALID
-
-    if definition.type == ParameterType.FLOAT:
-        if isinstance(raw_value, (int, float)):
-            return float(raw_value)
-        if isinstance(raw_value, str):
-            try:
-                return float(raw_value)
-            except ValueError:
-                pass
-        errors.append(f"Parameter '{definition.name}' must be a number")
-        return _INVALID
-
-    if definition.type == ParameterType.TEXT:
-        if isinstance(raw_value, str):
-            return raw_value
-        errors.append(f"Parameter '{definition.name}' must be text")
-        return _INVALID
-
-    raise AssertionError(f"Unhandled parameter type: {definition.type}")  # pragma: no cover

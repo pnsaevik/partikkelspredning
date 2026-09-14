@@ -9,11 +9,10 @@ startup, by whatever builds a `JobService` (see
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from partikkelspredning.domain.errors import JobNotFoundError
 from partikkelspredning.domain.jobs import JobStatus, SimulationJob, utcnow
-from partikkelspredning.domain.parameters import ParameterDefinition, validate_parameters
 from partikkelspredning.ports.notifications import NotificationService
 from partikkelspredning.ports.queue import JobQueue
 from partikkelspredning.ports.repository import JobRepository
@@ -24,13 +23,11 @@ class JobService:
     def __init__(
         self,
         *,
-        parameter_definitions: List[ParameterDefinition],
         repository: JobRepository,
         queue: JobQueue,
         result_store: ResultStore,
         notifier: NotificationService,
     ) -> None:
-        self._parameter_definitions = parameter_definitions
         self._repository = repository
         self._queue = queue
         self._result_store = result_store
@@ -43,13 +40,15 @@ class JobService:
         parameters: Dict[str, Any],
         metadata: Optional[Dict[str, Any]] = None,
     ) -> SimulationJob:
-        """Validate parameters and enqueue a new job.
+        """Enqueue a new job.
 
-        Raises `partikkelspredning.domain.errors.ParameterValidationError` if
-        `parameters` doesn't match the configured parameter definitions.
+        `parameters` is accepted as-is, an arbitrary JSON object with no
+        predefined schema - this API does not decide whether a job is
+        runnable. That's for the (not-yet-implemented) compute server to
+        determine once it claims the job; see the root README's "How the
+        compute server is expected to interact with the API".
         """
-        validated = validate_parameters(self._parameter_definitions, parameters)
-        job = SimulationJob(user_email=user_email, parameters=validated, metadata=metadata or {})
+        job = SimulationJob(user_email=user_email, parameters=parameters, metadata=metadata or {})
         self._repository.create(job)
         self._queue.enqueue(job.job_id)
         return job

@@ -7,24 +7,9 @@ has no concept of HTTP.
 """
 from __future__ import annotations
 
-from typing import List
-
 
 class DomainError(Exception):
     """Base class for all domain-level errors."""
-
-
-class ParameterValidationError(DomainError):
-    """Raised when submitted parameter values don't match their definition.
-
-    `errors` lists every problem found (missing parameters, unknown
-    parameters, wrong types, ...) rather than just the first one, so a
-    caller can report everything that needs fixing in one pass.
-    """
-
-    def __init__(self, errors: List[str]) -> None:
-        self.errors = errors
-        super().__init__("; ".join(errors))
 
 
 class JobNotFoundError(DomainError):

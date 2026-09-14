@@ -22,7 +22,6 @@ from partikkelspredning.domain.errors import (
     InvalidTransitionError,
     JobNotFoundError,
     JobOwnershipError,
-    ParameterValidationError,
 )
 from partikkelspredning.services.job_service import JobService
 
@@ -31,16 +30,13 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 def submit_job(request: SubmitJobRequest, job_service: JobService = Depends(get_job_service)) -> JobResponse:
-    """Validate parameters and enqueue a new job. This is the sole endpoint the
-    generated static form submits to."""
-    try:
-        job = job_service.submit_job(
-            user_email=request.user_email,
-            parameters=request.parameters,
-            metadata=request.metadata,
-        )
-    except ParameterValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors) from exc
+    """Enqueue a new job. `parameters` is accepted as-is, an arbitrary JSON
+    object with no predefined schema - see `JobService.submit_job`."""
+    job = job_service.submit_job(
+        user_email=request.user_email,
+        parameters=request.parameters,
+        metadata=request.metadata,
+    )
     return JobResponse.from_domain(job)
 
 

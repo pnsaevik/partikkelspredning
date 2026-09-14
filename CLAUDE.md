@@ -5,11 +5,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 The job-submission/tracking backend for a future particle-dispersion simulation
-system. A generated static web form lets a user submit simulation parameters;
-this backend validates them and queues the job. A future compute server (not
-implemented in this repo) will claim queued jobs, run the simulation, and
-report completion/failure back. First deployment target is Azure, but
-business logic never imports an Azure SDK.
+system. `POST /jobs` accepts simulation parameters as an arbitrary JSON
+object — there is no predefined parameter schema this backend validates
+against — and queues the job. A future compute server (not implemented in
+this repo) will claim queued jobs, decide whether a given job's parameters
+are actually runnable, run the simulation, and report completion/failure
+back. `POST /form` is a separate, unrelated convenience: it generates a
+static HTML form for one specific parameter set (e.g.
+resolution/duration/experiment) — not deployed by this repo, and its shape
+has no bearing on what `POST /jobs` accepts. First deployment target is
+Azure, but business logic never imports an Azure SDK.
 
 ## Commands
 
@@ -79,10 +84,15 @@ Azure:  browser -> Azure Functions -> same FastAPI app, via ASGI (api/function_a
 
 `api/` at the repo root is a thin Azure Functions adapter folder (separate
 from `src/partikkelspredning/api/`, the FastAPI route layer) — see
-`api/README.md` for local `func start` usage and deployment. Note its
-documented caveat: `func azure functionapp publish` is untested for this
-repo layout because `api/requirements.txt` installs `partikkelspredning`
-in editable mode from `..`, which won't exist in the remote build.
+`api/README.md` for local `func start` usage and deployment. Only this
+folder is uploaded for `func azure functionapp publish`'s remote build (it
+zips whatever directory contains `host.json`), so `api/requirements.txt`
+installs `partikkelspredning` from a wheel `api/build_vendor_wheel.sh`
+builds into the git-ignored `api/vendor/` rather than an editable `-e ..`
+install, which wouldn't survive that upload boundary. Run
+`build_vendor_wheel.sh` before every `pip install -r requirements.txt` or
+`func azure functionapp publish` — see `api/README.md`'s "How local
+packaging works".
 
 ## Job lifecycle
 
@@ -100,15 +110,16 @@ worker that claims a job and disappears; `SimulationJob` already carries
 
 ## Parameter definitions
 
-A simulation's inputs are a list of
-`partikkelspredning.domain.parameters.ParameterDefinition` (`name`, `type`,
-`description`); only `integer`, `float`, `text` are supported. The same list
-both validates submitted job parameters (`validate_parameters` — the sole
-authority; client-side validation is only a convenience) and generates the
-static HTML form (`POST /form`). The definitions used for `POST /jobs`
-validation are fixed once at startup via
-`PARTIKKEL_PARAMETER_DEFINITIONS_PATH`; `POST /form` is more general and can
-render a form for any parameter list passed to it directly.
+`POST /jobs` has **no predefined parameter schema** — `parameters` is
+accepted as an arbitrary JSON object and stored as-is; whether a job is
+actually runnable is for the (not-yet-implemented) compute server to decide
+once it claims it, not this API. `partikkelspredning.domain.parameters
+.ParameterDefinition` (`name`, `type`, `description`; only `integer`,
+`float`, `text` supported) exists solely to describe the fields of one
+generated form — `POST /form` takes a list of these directly in its request
+body and renders a standalone HTML page for that specific parameter set. It
+is a static-site-generator convenience, not deployed by this repo, and
+unrelated to what `POST /jobs` will accept.
 
 ## Configuration
 
@@ -116,8 +127,8 @@ All configuration is via environment variables
 (`src/partikkelspredning/config.py`) — no resource names or credentials are
 hard-coded. Key ones: `PARTIKKEL_STORAGE_MODE` (`local`/`azure`, default
 `local`), `PARTIKKEL_LOCAL_DATA_DIR` (default `./data`),
-`PARTIKKEL_PARAMETER_DEFINITIONS_PATH`, `AZURE_STORAGE_CONNECTION_STRING`
-(required in azure mode). Full table in the root README.
+`AZURE_STORAGE_CONNECTION_STRING` (required in azure mode). Full table in
+the root README.
 
 `local` mode storage: `adapters/local` keeps job metadata in
 `PARTIKKEL_LOCAL_DATA_DIR/jobs.csv` (pandas), the queue as one job id per
@@ -128,7 +139,10 @@ database (that's what `adapters/azure/` is for).
 
 ## Security posture (prototype, deliberately minimal)
 
-* All incoming data is validated server-side regardless of client-side checks.
+* Request structure (e.g. `user_email` format) is validated server-side
+  regardless of client-side checks. Job `parameters` content is
+  deliberately *not* validated against any schema — see "Parameter
+  definitions" above.
 * Job IDs are server-generated (`uuid4`); a client-supplied `job_id` is only
   ever used to look up a job, never trusted for authorization.
 * `claim`/`complete`/`fail` (the endpoints the future compute server calls)

@@ -6,7 +6,6 @@ from partikkelspredning.domain.errors import (
     InvalidTransitionError,
     JobNotFoundError,
     JobOwnershipError,
-    ParameterValidationError,
 )
 from partikkelspredning.domain.jobs import JobStatus
 
@@ -24,9 +23,20 @@ def test_submit_job_creates_a_queued_job(job_service):
     assert job_service.get_job(job.job_id) == job
 
 
-def test_submit_job_rejects_invalid_parameters(job_service):
-    with pytest.raises(ParameterValidationError):
-        job_service.submit_job(user_email="user@example.com", parameters={"resolution": "not-a-number"})
+def test_submit_job_accepts_arbitrary_parameters_unmodified(job_service):
+    """No predefined schema is enforced here - whatever JSON object is
+    submitted is stored as-is. See the root README on why: the compute
+    server that eventually claims the job decides what's runnable."""
+    job = job_service.submit_job(
+        user_email="user@example.com",
+        parameters={"anything": "goes", "nested": {"a": 1}, "list": [1, 2, 3]},
+    )
+    assert job.parameters == {"anything": "goes", "nested": {"a": 1}, "list": [1, 2, 3]}
+
+
+def test_submit_job_accepts_empty_parameters(job_service):
+    job = job_service.submit_job(user_email="user@example.com", parameters={})
+    assert job.parameters == {}
 
 
 def test_get_job_raises_for_unknown_id(job_service):

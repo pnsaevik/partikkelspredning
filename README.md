@@ -1,10 +1,15 @@
 # Partikkelspredning - job submission backend
 
 The job-submission/tracking backend for a future particle-dispersion
-simulation system. A static, generated web form lets a user submit
-simulation parameters; the backend validates them and stores the job as
-queued; a future compute server (**not implemented here**) will claim
-queued jobs, run the simulation, and report completion or failure back.
+simulation system. A client submits simulation parameters as an arbitrary
+JSON object - there is no predefined parameter schema this backend
+validates against; it accepts and stores the job as queued. A future
+compute server (**not implemented here**) will claim queued jobs and is the
+one that decides whether a given job's parameters are actually runnable,
+then reports completion or failure back. A convenience endpoint
+(`POST /form`) can generate a static HTML form for a specific parameter set
+(e.g. resolution/duration/experiment), but that form isn't deployed by this
+repo and its shape has no bearing on what `POST /jobs` will accept.
 
 The first deployment target is Azure, but the architecture deliberately
 minimizes vendor lock-in: business logic never imports an Azure SDK.
@@ -94,21 +99,23 @@ expires); the local CSV queue adapter does not.
 
 ## Parameter definitions
 
-A simulation's inputs are described by a list of
+`POST /jobs` accepts `parameters` as an arbitrary JSON object - there is
+**no predefined, server-configured parameter schema** it validates against.
+Any job with any shape of parameters is accepted and queued; whether a job
+is actually runnable is for the (not-yet-implemented) compute server to
+decide once it claims it (see "How the compute server is expected to
+interact with the API" below).
+
 `partikkelspredning.domain.parameters.ParameterDefinition` (`name`, `type`,
-`description`). Only `integer`, `float`, and `text` are supported. The same
-list is used to:
-
-1. validate submitted job parameters (`validate_parameters` - the sole
-   authority; client-side validation is only ever a convenience), and
-2. generate the static HTML form (`POST /form`).
-
-The definitions used for `POST /jobs` validation are configured once at
-startup (`PARTIKKEL_PARAMETER_DEFINITIONS_PATH`, see Configuration below) -
-this iteration handles one simulation's inputs at a time. `POST /form` is
-more general: it can render a form for *any* parameter list passed to it,
-which is convenient for generating forms ahead of / independently from what
-a given deployment currently validates.
+`description`; only `integer`, `float`, and `text` types are supported)
+exists purely to describe the fields of *one* generated form. `POST /form`
+takes a list of these directly in its request body and renders a
+standalone, dependency-free HTML page for that specific parameter set (e.g.
+resolution/duration/experiment) - a static-site-generator convenience, not
+something this repo deploys or hosts. Its output has no bearing on what
+`POST /jobs` will accept: a form generated for one parameter list, and a
+job submitted with entirely different parameters, are both valid as far as
+this backend is concerned.
 
 ## API
 
@@ -161,7 +168,6 @@ hard-coded:
 |---|---|---|
 | `PARTIKKEL_STORAGE_MODE` | `local` or `azure` | `local` |
 | `PARTIKKEL_API_BASE_URL` | API base URL baked into generated forms | `http://localhost:8000` |
-| `PARTIKKEL_PARAMETER_DEFINITIONS_PATH` | JSON file of parameter definitions | built-in example (resolution/duration/experiment) |
 | `PARTIKKEL_LOCAL_DATA_DIR` | local mode: where CSV/results files live | `./data` |
 | `AZURE_STORAGE_CONNECTION_STRING` | azure mode: shared connection string | *(required in azure mode)* |
 | `PARTIKKEL_AZURE_TABLE_NAME` | azure mode: job metadata table | `jobs` |
@@ -172,8 +178,11 @@ hard-coded:
 
 This is a prototype; the following is deliberately minimal but not ignored:
 
-* All incoming data is validated server-side (Pydantic request models +
-  `validate_parameters`) regardless of what a client already checked.
+* Request structure is validated server-side (Pydantic models: e.g.
+  `user_email` must be a well-formed email address). Job `parameters`
+  content itself is *not* validated against any schema - see "Parameter
+  definitions" above for why, and note this means the compute server that
+  eventually claims a job must treat its parameters as untrusted input too.
 * Job IDs are server-generated (`uuid4`); a client-supplied `job_id` in a
   URL is only ever used to look up a job (404 if unknown) - it is never
   trusted to grant any special permission.

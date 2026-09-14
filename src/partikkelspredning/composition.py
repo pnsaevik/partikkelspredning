@@ -47,7 +47,6 @@ def build_job_service(settings: Settings) -> JobService:
         raise ValueError(f"Unknown storage mode: {settings.storage_mode!r}")
 
     return JobService(
-        parameter_definitions=settings.parameter_definitions,
         repository=repository,
         queue=queue,
         result_store=result_store,

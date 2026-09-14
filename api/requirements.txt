@@ -6,8 +6,13 @@ azure-data-tables
 azure-storage-queue
 azure-storage-blob
 
-# Platform-agnostic application (see ../src/partikkelspredning), installed in
-# editable mode from the sibling package - this is the FastAPI app that
-# function_app.py hosts via ASGI. See this folder's README's "Known caveat"
-# about why this doesn't yet work for `func azure functionapp publish`.
--e ..
+# Platform-agnostic application (see ../src/partikkelspredning) - this is the
+# FastAPI app that function_app.py hosts via ASGI. Installed from a wheel
+# vendored into ./vendor/ (run build_vendor_wheel.sh first - see this
+# folder's README) rather than `-e ..`, since only this `api/` folder is
+# uploaded for `func azure functionapp publish`'s remote build and `..`
+# won't exist there. Keep this version pinned to pyproject.toml's
+# [project].version - a mismatch means the wheel in vendor/ won't satisfy
+# this line and the install will fail with "no matching distribution".
+--find-links vendor
+partikkelspredning==0.1.1

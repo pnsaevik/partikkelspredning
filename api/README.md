@@ -17,6 +17,7 @@ and a Python version supported by the Azure Functions Python worker (3.9-3.12).
 cd api
 python -m venv .venv
 source .venv/bin/activate
+./build_vendor_wheel.sh   # builds partikkelspredning into vendor/ - see below
 pip install -r requirements.txt
 func start
 ```
@@ -51,6 +52,7 @@ az functionapp config appsettings set --name <function-app-name> --resource-grou
 
 # deploy this folder's code
 cd api
+./build_vendor_wheel.sh   # required every time - see "How local packaging works" below
 func azure functionapp publish <function-app-name>
 ```
 
@@ -58,11 +60,22 @@ func azure functionapp publish <function-app-name>
 never deployed (see `.funcignore`); app settings for the deployed function
 are configured on the Azure resource itself, as above.
 
-**Known caveat:** `requirements.txt` installs `partikkelspredning` in
-editable mode from `..` (the repo root), which works for local `func start`
-but not for `func azure functionapp publish`, since only this `api/` folder
-is uploaded for the remote build and `..` won't exist there. Until this is
-solved (e.g. by building a wheel of `partikkelspredning` into
-`api/.python_packages` before publishing, or publishing it to a package
-index), treat `func azure functionapp publish` as untested for this repo
-layout.
+### How local packaging works
+
+`func azure functionapp publish` only uploads this `api/` folder for its
+remote build (it zips whatever directory contains `host.json`, filtered by
+`.funcignore`) - the repo root, and everything under `../src/`, never leave
+your machine as part of that build context. So `partikkelspredning` can't be
+installed the way a normal sibling-package dependency would be.
+
+Instead, `requirements.txt` installs it from a wheel that
+`build_vendor_wheel.sh` builds into `vendor/` (referenced via
+`--find-links vendor`), which *does* get uploaded. `partikkelspredning` is
+pure Python, so a wheel built on any machine/OS installs correctly on
+Azure's Linux Functions host. Run `./build_vendor_wheel.sh` before every
+`pip install -r requirements.txt` (including for local `func start`) and
+before every `func azure functionapp publish` - `vendor/` is git-ignored,
+not committed, since it's regenerated from source each time. Keep the
+version pinned in `requirements.txt` (`partikkelspredning==<version>`) in
+sync with `[project].version` in the repo root `pyproject.toml`, or the
+install will fail to find a matching wheel.

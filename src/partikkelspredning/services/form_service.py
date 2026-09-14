@@ -6,11 +6,14 @@ appropriate `type=` attribute and basic client-side validation), a submit
 button, and a small inline `<script>` that POSTs the values as JSON to the
 configured API base URL and shows the returned job ID or an error message.
 
-This module is presentation only - it does not decide whether the values
-are *actually* valid; that's `partikkelspredning.domain.parameters
-.validate_parameters`'s job, which the generated page's own client-side
-checks intentionally mirror only loosely, as a convenience, never as the
-source of truth. Nothing here is HTML-specific business logic, so it stays
+This module is presentation only. `POST /jobs` itself accepts parameters as
+an arbitrary JSON object with no predefined schema (see
+`partikkelspredning.domain.parameters`) - it never validates against the
+definitions used to generate a given form. Whether submitted values are
+actually usable is for the compute server that eventually claims the job to
+decide, not this form or the submission API. The generated page's
+client-side type checks are purely a UX convenience for whichever form this
+happens to be. Nothing here is HTML-specific business logic, so it stays
 out of the domain layer.
 """
 from __future__ import annotations
