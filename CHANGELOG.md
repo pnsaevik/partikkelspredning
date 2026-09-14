@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-09-14
+
+### Fixed
+
+- Found (via Application Insights, newly enabled on the Azure resource -
+  see [0.1.6]'s deploy attempt for the last symptom) the actual cause of
+  every persistent 503 since [0.1.2]: the Python Functions host crash-loops
+  at startup with a `RoutePatternException` - `Azure/functions-action`
+  deployment always succeeded and the Python worker always started fine,
+  but the host's ASP.NET Core routing layer then failed to register the
+  ASGI catch-all route because `host.json`'s default `routePrefix`
+  (`"api"`) combined with `AsgiFunctionApp`'s route template produces the
+  invalid pattern `api//{*route}` (a double slash) - a known bug,
+  [Azure/azure-functions-python-worker#1310](https://github.com/Azure/azure-functions-python-worker/issues/1310).
+  Every single request hit this, immediately, regardless of packaging
+  mechanism ([0.1.6]) or any app code - which is why nothing on the
+  application side could have fixed it. Set `extensions.http.routePrefix`
+  to `""` in `api/host.json` (the confirmed workaround). The deployed app
+  is now reached at the site root (e.g. `/openapi.json`, `/docs`) instead
+  of under `/api/` - updated the smoke test, `PARTIKKEL_API_BASE_URL` (both
+  the deployed app setting and `api/README.md`'s example), and the local
+  dev docs URL accordingly. See `api/README.md`'s new "Why `routePrefix` is
+  empty" section.
+
+## [0.1.6] - 2026-09-14
+
+### Changed
+
+- Restored the real FastAPI/ASGI app (`api/function_app.py`), reverting the
+  throwaway hello-world diagnostic from [0.1.4] now that the deploy
+  pipeline itself is confirmed working.
+- Replaced the vendored-wheel mechanism for installing `partikkelspredning`
+  into the deployed Function App with a direct
+  `partikkelspredning @ git+https://github.com/<owner>/<repo>.git@<commit>`
+  line, appended to `api/requirements.txt`'s checked-out copy and pinned to
+  the exact commit being deployed (`action_deploy.yml`, and the manual
+  equivalent in `api/README.md`). Removes `api/build_vendor_wheel.sh` and
+  the git-ignored `api/vendor/` directory entirely, along with the
+  hand-maintained `partikkelspredning==<version>` pin that had to be kept
+  in sync with `pyproject.toml` by hand or the install would silently fail.
+  Local development now installs `partikkelspredning` separately in
+  editable mode (`pip install -e ..`) instead of exercising the same
+  install mechanism as deployment - the previous design's intent, but this
+  needed `..` to exist, which it never does in the uploaded `api/` folder
+  Azure's remote build actually runs against. Deploying manually from a
+  local checkout now requires that commit to already be pushed to GitHub,
+  since Kudu clones from the real repository, not the local one.
+
 ## [0.1.5] - 2026-09-14
 
 ### Fixed

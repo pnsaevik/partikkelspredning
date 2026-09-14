@@ -1,23 +1,29 @@
-"""TEMPORARY diagnostic endpoint - Flex Consumption deployment smoke test.
+"""Azure Functions adapter.
 
-The real FastAPI/ASGI app (see `function_app_fastapi.py.disabled`, moved
-aside rather than deleted) is not currently coming up healthy on
-`partikkelspredning-api`'s Flex Consumption plan - the deploy step itself
-succeeds, but the deployed app never returns 200 (see CHANGELOG.md's
-[0.1.4] entry). This file replaces it with the smallest possible Python
-Azure Function - no FastAPI, no ASGI, no `partikkelspredning` import, no
-Azure SDKs - to isolate whether *anything* can run on this Function App at
-all before debugging the full app further.
+This module (together with everything under
+`partikkelspredning.adapters.azure`) is the only place that imports Azure
+SDKs. It hosts the exact same FastAPI application used for local
+development directly inside Azure Functions, using the standard ASGI
+hosting support (`func.AsgiFunctionApp`) instead of re-declaring every route
+as a separate Azure Function - so the two hosting modes can never drift
+apart:
 
-This is deliberately throwaway: once the underlying issue is understood,
-revert this commit to restore `function_app.py` from
-`function_app_fastapi.py.disabled` and go back to hosting the real app.
+    local:  browser -> uvicorn -> FastAPI app (partikkelspredning.main:app)
+    Azure:  browser -> Azure Functions -> the *same* FastAPI app, via ASGI
+
+Which storage adapters that FastAPI app itself uses (local CSV files vs.
+Azure Table/Queue/Blob Storage) is controlled independently by the
+`PARTIKKEL_STORAGE_MODE` app setting/environment variable - see the root
+README and `partikkelspredning.config`. A deployed Function App will
+normally set `PARTIKKEL_STORAGE_MODE=azure` plus
+`AZURE_STORAGE_CONNECTION_STRING`.
+
+New endpoints are added in `partikkelspredning.api` (a router + a line in
+`partikkelspredning.api.app.create_app`), never here - this file never needs
+to change when the API grows.
 """
 import azure.functions as func
 
-app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+from partikkelspredning.main import app as fastapi_app
 
-
-@app.route(route="hello", methods=["GET"])
-def hello(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse("Hello, world!")
+app = func.AsgiFunctionApp(app=fastapi_app, http_auth_level=func.AuthLevel.ANONYMOUS)
