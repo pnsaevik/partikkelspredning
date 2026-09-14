@@ -56,8 +56,14 @@ jobs:
         # Azure/functions-action can report success even when the app ends
         # up serving zero functions (see note above) - so verify directly
         # that a real route responds instead of trusting that step alone.
+        #
+        # TEMPORARY: checks /api/hello (the minimal diagnostic endpoint from
+        # api/function_app.py - see CHANGELOG.md's [0.1.4] entry) instead of
+        # the real app's /api/openapi.json, since that's what's currently
+        # deployed. Revert this alongside function_app.py once the real app
+        # is restored, or this smoke test will pass against the wrong app.
         run: |
-          url="https://partikkelspredning-api.azurewebsites.net/api/openapi.json"
+          url="https://partikkelspredning-api.azurewebsites.net/api/hello"
           for i in $(seq 1 10); do
             code="$(curl -s -o /dev/null -w '%{http_code}' "$url")"
             if [ "$code" = "200" ]; then
