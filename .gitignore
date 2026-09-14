@@ -11,9 +11,5 @@ venv/
 api/local.settings.json
 api/.python_packages/
 
-# Build artifact from api/build_vendor_wheel.sh - regenerated before every
-# local `func start` / `func azure functionapp publish`, not checked in.
-api/vendor/
-
 # Local-mode runtime data (see PARTIKKEL_LOCAL_DATA_DIR / src/partikkelspredning/config.py)
 data/

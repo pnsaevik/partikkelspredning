@@ -14,17 +14,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Build vendored partikkelspredning wheel
-        # Only api/ is uploaded to Azure below, so partikkelspredning is
-        # vendored as a wheel first - see api/README.md's "How local
-        # packaging works" for why.
-        run: |
-          cd api
-          ./build_vendor_wheel.sh
+      - name: Pin partikkelspredning to this commit in requirements.txt
+        # Only api/ is uploaded to Azure below, so `..` (partikkelspredning's
+        # own pyproject.toml) doesn't exist at install time - append a
+        # git-based requirement pinned to the exact commit being deployed
+        # instead, so it can never drift out of sync with what's actually
+        # being tested. Edits only this run's checked-out copy of the file,
+        # never committed back - see api/requirements.txt's comment.
+        run: echo "partikkelspredning @ git+https://github.com/${{ github.repository }}.git@${{ github.sha }}" >> api/requirements.txt
 
       - name: Log in to Azure
         uses: azure/login@v3
@@ -56,14 +53,8 @@ jobs:
         # Azure/functions-action can report success even when the app ends
         # up serving zero functions (see note above) - so verify directly
         # that a real route responds instead of trusting that step alone.
-        #
-        # TEMPORARY: checks /api/hello (the minimal diagnostic endpoint from
-        # api/function_app.py - see CHANGELOG.md's [0.1.4] entry) instead of
-        # the real app's /api/openapi.json, since that's what's currently
-        # deployed. Revert this alongside function_app.py once the real app
-        # is restored, or this smoke test will pass against the wrong app.
         run: |
-          url="https://partikkelspredning-api.azurewebsites.net/api/hello"
+          url="https://partikkelspredning-api.azurewebsites.net/api/openapi.json"
           for i in $(seq 1 10); do
             code="$(curl -s -o /dev/null -w '%{http_code}' "$url")"
             if [ "$code" = "200" ]; then

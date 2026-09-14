@@ -87,12 +87,14 @@ from `src/partikkelspredning/api/`, the FastAPI route layer) — see
 `api/README.md` for local `func start` usage and deployment. Only this
 folder is uploaded for `func azure functionapp publish`'s remote build (it
 zips whatever directory contains `host.json`), so `api/requirements.txt`
-installs `partikkelspredning` from a wheel `api/build_vendor_wheel.sh`
-builds into the git-ignored `api/vendor/` rather than an editable `-e ..`
-install, which wouldn't survive that upload boundary. Run
-`build_vendor_wheel.sh` before every `pip install -r requirements.txt` or
-`func azure functionapp publish` — see `api/README.md`'s "How local
-packaging works".
+doesn't pin `partikkelspredning` directly — an editable `-e ..` install
+wouldn't survive that upload boundary. Instead, a `partikkelspredning @
+git+https://github.com/<owner>/<repo>.git@<commit>` line, pinned to the
+exact commit being deployed, is appended to that checked-out copy of the
+file right before deployment (`action_deploy.yml` for CI; see
+`api/README.md`'s "How packaging works" for the manual equivalent) —
+never committed, so `pip install -e ..` (see the same README section) is
+what local development uses instead.
 
 ## Job lifecycle
 

@@ -40,12 +40,8 @@ jobs:
 
       - name: Check tag matches pyproject.toml version
         if: github.event_name == 'push'
-        # api/requirements.txt pins partikkelspredning==<version> and must
-        # match [project].version in pyproject.toml (see api/README.md's
-        # "How local packaging works") - build_vendor_wheel.sh (in
-        # action_deploy.yml) will fail loudly if that pin is stale. This
-        # additionally guards against tagging a release that doesn't match
-        # the package version at all.
+        # Guards against tagging a release whose tag name doesn't match
+        # what pyproject.toml actually declares as the current version.
         run: |
           tag="${GITHUB_REF_NAME#v}"
           pkg_version="$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')"

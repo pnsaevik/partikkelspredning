@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-09-14
+
+### Changed
+
+- Restored the real FastAPI/ASGI app (`api/function_app.py`), reverting the
+  throwaway hello-world diagnostic from [0.1.4] now that the deploy
+  pipeline itself is confirmed working.
+- Replaced the vendored-wheel mechanism for installing `partikkelspredning`
+  into the deployed Function App with a direct
+  `partikkelspredning @ git+https://github.com/<owner>/<repo>.git@<commit>`
+  line, appended to `api/requirements.txt`'s checked-out copy and pinned to
+  the exact commit being deployed (`action_deploy.yml`, and the manual
+  equivalent in `api/README.md`). Removes `api/build_vendor_wheel.sh` and
+  the git-ignored `api/vendor/` directory entirely, along with the
+  hand-maintained `partikkelspredning==<version>` pin that had to be kept
+  in sync with `pyproject.toml` by hand or the install would silently fail.
+  Local development now installs `partikkelspredning` separately in
+  editable mode (`pip install -e ..`) instead of exercising the same
+  install mechanism as deployment - the previous design's intent, but this
+  needed `..` to exist, which it never does in the uploaded `api/` folder
+  Azure's remote build actually runs against. Deploying manually from a
+  local checkout now requires that commit to already be pushed to GitHub,
+  since Kudu clones from the real repository, not the local one.
+
 ## [0.1.5] - 2026-09-14
 
 ### Fixed
