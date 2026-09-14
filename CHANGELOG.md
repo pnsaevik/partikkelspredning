@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.2] - 2026-09-14
 
 ### Added
 
@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Function App (authenticating via OIDC, no stored secret) if the tag
   matches `pyproject.toml`'s version. See api/README.md's "Continuous
   deployment" section for one-time setup.
+- A post-deploy smoke-test step in that workflow, polling
+  `/api/openapi.json` for a 200 response.
+
+### Fixed
+
+- The deploy workflow used `scm-do-build-during-deployment` /
+  `enable-oryx-build`, the classic Consumption/Premium plan build inputs,
+  against `partikkelspredning-api`'s Flex Consumption plan. Flex
+  Consumption needs `remote-build: true` instead - without it, Kudu
+  silently skipped the Oryx build, nothing in `requirements.txt` got
+  installed, and the deployed app served zero functions even though the
+  workflow reported success.
 
 ## [0.1.1] - 2026-09-14
 

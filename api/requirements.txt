@@ -15,4 +15,4 @@ azure-storage-blob
 # [project].version - a mismatch means the wheel in vendor/ won't satisfy
 # this line and the install will fail with "no matching distribution".
 --find-links vendor
-partikkelspredning==0.1.1
+partikkelspredning==0.1.2
