@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-09-14
+
+### Changed (temporary diagnostic)
+
+- `v0.1.2`'s deploy to `partikkelspredning-api` (Flex Consumption) reported
+  success, but the deployed app never returned 200 - `/api/openapi.json`
+  stayed at 503 through the full smoke-test retry window. To isolate
+  whether the Flex Consumption app can run *anything* before debugging the
+  full app further, `api/function_app.py` (the FastAPI/ASGI host) is
+  temporarily moved aside to `api/function_app_fastapi.py.disabled` and
+  replaced with a minimal `GET /api/hello` returning "Hello, world!" -
+  no FastAPI, no ASGI, no `partikkelspredning` import, no Azure SDKs.
+  `api/requirements.txt` is trimmed to just `azure-functions` accordingly.
+  Revert this entry's commit to restore the real app once the underlying
+  issue is understood.
+
 ## [0.1.3] - 2026-09-14
 
 ### Added
