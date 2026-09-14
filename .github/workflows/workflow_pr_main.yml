@@ -1,0 +1,18 @@
+# --- Pull request into main ---
+#
+# Gate: pyproject.toml's version must be bumped (and not decreased) relative
+# to main, and CHANGELOG.md must have an entry for that version - see
+# .github/scripts/version.sh and .github/scripts/changelog.sh. The test
+# suite itself already runs on every push (see workflow_push.yml), including
+# pushes to the PR's own branch, so it isn't repeated here.
+
+name: PR main
+
+on:
+  pull_request:
+    branches:
+      - "main"
+
+jobs:
+  check_changelog:
+    uses: ./.github/workflows/action_changelog.yml

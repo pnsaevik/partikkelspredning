@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-09-14
+
+### Added
+
+- CI restructured around three gates, adapted from
+  [ladim](https://github.com/pnsaevik/ladim)'s workflow philosophy: every
+  push (any branch) runs `pytest` (`workflow_push.yml`); every pull request
+  into `main` checks that `pyproject.toml`'s version was bumped and that
+  `CHANGELOG.md` has a matching entry (`workflow_pr_main.yml`,
+  `.github/scripts/version.sh`, `.github/scripts/changelog.sh` - ladim's
+  originals read `ladim/__init__.py`'s `__version__` instead of
+  `pyproject.toml`); a tag push only deploys if the tagged commit is
+  reachable from `main` (`deploy.yml`'s new "Verify tag" job). Shared logic
+  now lives in reusable `action_pytest.yml`, `action_changelog.yml`, and
+  `action_deploy.yml` workflows.
+
 ## [0.1.2] - 2026-09-14
 
 ### Added
