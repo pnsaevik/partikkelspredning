@@ -22,8 +22,11 @@ pip install -e ..   # partikkelspredning itself, editable - see "How packaging w
 func start
 ```
 
-Then visit `http://localhost:7071/api/docs` for the interactive OpenAPI
-docs (same endpoints as running `uvicorn` directly - see the root README).
+Then visit `http://localhost:7071/docs` for the interactive OpenAPI docs
+(same endpoints as running `uvicorn` directly - see the root README).
+`host.json` sets `extensions.http.routePrefix` to `""` (no `/api` prefix) -
+see "Why `routePrefix` is empty" below for why that's required, not just a
+style choice.
 
 `local.settings.json` defaults `PARTIKKEL_STORAGE_MODE` to `local`, so
 `func start` works with no Azure Storage account for the *application's
@@ -89,7 +92,7 @@ az functionapp create --resource-group <resource-group> --consumption-plan-locat
 # AzureWebJobsStorage, which the Functions host manages itself)
 az functionapp config appsettings set --name <function-app-name> --resource-group <resource-group> \
   --settings PARTIKKEL_STORAGE_MODE=azure AZURE_STORAGE_CONNECTION_STRING="<connection-string>" \
-             PARTIKKEL_API_BASE_URL="https://<function-app-name>.azurewebsites.net/api"
+             PARTIKKEL_API_BASE_URL="https://<function-app-name>.azurewebsites.net"
 
 # deploy this folder's code - must be pushed to GitHub first (see below)
 cd api
@@ -101,6 +104,25 @@ git checkout -- requirements.txt   # discard the local edit above
 `local.settings.json` is for local development only - it is git-ignored and
 never deployed (see `.funcignore`); app settings for the deployed function
 are configured on the Azure resource itself, as above.
+
+### Why `routePrefix` is empty
+
+`host.json` sets `extensions.http.routePrefix` to `""`. This isn't a style
+choice - the Python Functions host has a bug
+([Azure/azure-functions-python-worker#1310](https://github.com/Azure/azure-functions-python-worker/issues/1310))
+where an `AsgiFunctionApp` combined with any non-empty `routePrefix`
+(including the default, `"api"`) makes the host build the invalid ASP.NET
+Core route template `api//{*route}` (a double slash) for the catch-all
+route - a `RoutePatternException` at startup, on every single instance,
+forever, since it happens before any of our code runs. This is what caused
+the persistent 503s that motivated the diagnostics in this repo's commit
+history around [0.1.4]-[0.1.6]: the deploy step itself always succeeded,
+but the Functions host silently crash-looped on startup and never served a
+single request - confirmed via Application Insights, not guessable from
+the deploy logs alone. With `routePrefix: ""`, the app is reached at the site root (e.g.
+`/openapi.json`, `/docs`) both locally and once deployed, not under
+`/api/` - see "Run locally" above. `PARTIKKEL_API_BASE_URL` (above) must
+match: no trailing `/api`.
 
 ### How packaging works
 

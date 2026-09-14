@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-09-14
+
+### Fixed
+
+- Found (via Application Insights, newly enabled on the Azure resource -
+  see [0.1.6]'s deploy attempt for the last symptom) the actual cause of
+  every persistent 503 since [0.1.2]: the Python Functions host crash-loops
+  at startup with a `RoutePatternException` - `Azure/functions-action`
+  deployment always succeeded and the Python worker always started fine,
+  but the host's ASP.NET Core routing layer then failed to register the
+  ASGI catch-all route because `host.json`'s default `routePrefix`
+  (`"api"`) combined with `AsgiFunctionApp`'s route template produces the
+  invalid pattern `api//{*route}` (a double slash) - a known bug,
+  [Azure/azure-functions-python-worker#1310](https://github.com/Azure/azure-functions-python-worker/issues/1310).
+  Every single request hit this, immediately, regardless of packaging
+  mechanism ([0.1.6]) or any app code - which is why nothing on the
+  application side could have fixed it. Set `extensions.http.routePrefix`
+  to `""` in `api/host.json` (the confirmed workaround). The deployed app
+  is now reached at the site root (e.g. `/openapi.json`, `/docs`) instead
+  of under `/api/` - updated the smoke test, `PARTIKKEL_API_BASE_URL` (both
+  the deployed app setting and `api/README.md`'s example), and the local
+  dev docs URL accordingly. See `api/README.md`'s new "Why `routePrefix` is
+  empty" section.
+
 ## [0.1.6] - 2026-09-14
 
 ### Changed
