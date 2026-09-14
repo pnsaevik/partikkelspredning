@@ -33,14 +33,26 @@ our code) is left blank here; a real deployment needs it set, either to a
 real storage account connection string or `UseDevelopmentStorage=true`
 against the [Azurite emulator](https://learn.microsoft.com/azure/storage/common/storage-use-azurite).
 
-## Continuous deployment (GitHub Actions)
+## Continuous integration and deployment (GitHub Actions)
 
-Pushing a tag matching `vX.Y.Z` (e.g. `v0.1.2`) triggers
-`.github/workflows/deploy.yml`, which runs the test suite and, if it
-passes and the tag matches `pyproject.toml`'s `[project].version`, deploys
-`api/` to the `partikkelspredning-api` Function App the same way the manual
-steps below do (`build_vendor_wheel.sh` then a remote-build deploy) - no
-local `func` install or Cloud Shell needed for routine releases.
+CI is split into three gates (workflow philosophy and `.github/scripts/`
+adapted from [ladim](https://github.com/pnsaevik/ladim)'s):
+
+* **Every push**, any branch (`workflow_push.yml`): runs the test suite
+  (`action_pytest.yml`).
+* **Every pull request into `main`** (`workflow_pr_main.yml`): checks that
+  `pyproject.toml`'s `[project].version` was bumped - and not decreased -
+  relative to the PR's base, and that `CHANGELOG.md` has a `## [<that
+  version>] - ...` entry (`action_changelog.yml`, backed by
+  `.github/scripts/version.sh` and `.github/scripts/changelog.sh`).
+* **Pushing a tag matching `vX.Y.Z`** (e.g. `v0.1.2`) triggers
+  `deploy.yml`: it first verifies the tag's commit is actually reachable
+  from `main` and that the tag matches `pyproject.toml`'s version (refusing
+  otherwise), then runs the test suite and, if that passes, deploys `api/`
+  to the `partikkelspredning-api` Function App the same way the manual
+  steps below do (`build_vendor_wheel.sh` then a remote-build deploy,
+  `action_deploy.yml`) - no local `func` install or Cloud Shell needed for
+  routine releases.
 
 The workflow authenticates to Azure via OIDC (a federated credential on an
 Azure AD app registration scoped to this repo's `production` GitHub

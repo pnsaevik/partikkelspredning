@@ -1,0 +1,21 @@
+name: Check version bump and changelog entry
+
+on: workflow_call
+
+jobs:
+  check-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2 # need HEAD^1 (the PR base) - see .github/scripts/version.sh
+
+      - name: Check version has been bumped
+        run: |
+          chmod +x ./.github/scripts/version.sh
+          ./.github/scripts/version.sh
+
+      - name: Check changelog entry exists
+        run: |
+          chmod +x ./.github/scripts/changelog.sh
+          ./.github/scripts/changelog.sh

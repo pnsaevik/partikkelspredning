@@ -1,0 +1,15 @@
+# --- Push to any branch ---
+#
+# Every push runs the test suite - cheap, fast feedback on every commit,
+# independent of the PR/tag-gated checks below.
+
+name: Push
+
+on:
+  push:
+    branches:
+      - "**" # every branch push, but not tag pushes - see deploy.yml for those
+
+jobs:
+  run_pytest:
+    uses: ./.github/workflows/action_pytest.yml

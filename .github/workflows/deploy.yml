@@ -4,51 +4,35 @@ name: deploy
 # see api/README.md) to the existing Flex Consumption Function App
 # `partikkelspredning-api` in resource group `partikkelspredning-rg`.
 #
-# Triggered by pushing a tag like v0.1.2. Authenticates to Azure via OIDC
-# (no stored secret) using a federated credential scoped to the `production`
-# GitHub environment - see the `deploy` job's `environment:` below.
+# Triggered by pushing a tag like v0.1.2, but only actually deploys if that
+# tag's commit is reachable from main (see the verify job below) - a tag
+# pushed from a feature branch, or any other stray tag, is refused rather
+# than silently deploying unreleased code.
 
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - "v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test
+  verify:
+    name: Verify tag
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
-
-      - run: pip install -e ".[dev]"
-
-      - run: pytest
-
-  deploy:
-    name: Deploy to Azure Functions
-    needs: test
-    runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-      id-token: write # required for OIDC login to Azure (azure/login)
-
-    steps:
-      - uses: actions/checkout@v7
+          fetch-depth: 0 # need full history for the merge-base check below
 
       - name: Check tag matches pyproject.toml version
         # api/requirements.txt pins partikkelspredning==<version> and must
         # match [project].version in pyproject.toml (see api/README.md's
-        # "How local packaging works") - build_vendor_wheel.sh below will
-        # fail loudly if that pin is stale. This additionally guards against
-        # tagging a release that doesn't match the package version at all.
+        # "How local packaging works") - build_vendor_wheel.sh (in
+        # action_deploy.yml) will fail loudly if that pin is stale. This
+        # additionally guards against tagging a release that doesn't match
+        # the package version at all.
         run: |
           tag="${GITHUB_REF_NAME#v}"
           pkg_version="$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')"
@@ -57,58 +41,20 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-
-      - name: Build vendored partikkelspredning wheel
-        # Only api/ is uploaded to Azure below, so partikkelspredning is
-        # vendored as a wheel first - see api/README.md's "How local
-        # packaging works" for why.
+      - name: Check tag is reachable from main
         run: |
-          cd api
-          ./build_vendor_wheel.sh
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME (commit $GITHUB_SHA) is not on main - refusing to deploy"
+            exit 1
+          fi
 
-      - name: Log in to Azure
-        uses: azure/login@v3
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  test:
+    name: Test
+    needs: verify
+    uses: ./.github/workflows/action_pytest.yml
 
-      - name: Deploy api/ to Azure Functions
-        # partikkelspredning-api is on the Flex Consumption plan, which needs
-        # `remote-build` (not `scm-do-build-during-deployment` /
-        # `enable-oryx-build` - those are for the classic Consumption/Premium
-        # plans and are explicitly documented as not to be set here). Without
-        # it, Kudu skips the Oryx build ("remotebuild = false" in its deploy
-        # log), nothing in requirements.txt gets installed, and the Python
-        # worker silently indexes zero functions - the action still reports
-        # success even though the app is left serving the default "up and
-        # running" placeholder page. The smoke-test step below exists
-        # specifically to catch that failure mode instead of trusting this
-        # step's own success/failure signal.
-        uses: Azure/functions-action@v1
-        with:
-          app-name: partikkelspredning-api
-          package: api
-          sku: flexconsumption
-          remote-build: true
-
-      - name: Smoke-test the deployed app
-        # Azure/functions-action can report success even when the app ends
-        # up serving zero functions (see note above) - so verify directly
-        # that a real route responds instead of trusting that step alone.
-        run: |
-          url="https://partikkelspredning-api.azurewebsites.net/api/openapi.json"
-          for i in $(seq 1 10); do
-            code="$(curl -s -o /dev/null -w '%{http_code}' "$url")"
-            if [ "$code" = "200" ]; then
-              echo "OK: $url returned 200"
-              exit 0
-            fi
-            echo "Attempt $i: $url returned $code, retrying..."
-            sleep 15
-          done
-          echo "::error::$url never returned 200 - deployment likely did not take effect"
-          exit 1
+  deploy:
+    name: Deploy
+    needs: test
+    uses: ./.github/workflows/action_deploy.yml
