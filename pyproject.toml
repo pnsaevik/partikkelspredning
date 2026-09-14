@@ -33,3 +33,13 @@ markers = [
     "azure_integration: requires a real/emulated Azure Storage account; excluded by default (see tests/azure_integration/test_azure_adapters.py)",
 ]
 addopts = "-m 'not azure_integration'"
+filterwarnings = [
+    # Raised from inside starlette/testclient.py's own module-level code (not
+    # ours), which still references anyio's old `anyio.abc.BlockingPortal`
+    # alias - deprecated in newer anyio releases in favor of
+    # `anyio.from_thread.BlockingPortal`. This is a starlette/anyio version
+    # mismatch to fix in those projects, not something addressable from our
+    # dependencies, so it's ignored narrowly by message rather than pinning
+    # an anyio/starlette version just to silence it.
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated.*:DeprecationWarning",
+]
