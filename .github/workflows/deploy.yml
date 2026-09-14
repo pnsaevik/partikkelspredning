@@ -16,6 +16,10 @@ on:
 
 permissions:
   contents: read
+  id-token: write # required so the nested `deploy` job (action_deploy.yml)
+                  # can request it for OIDC login to Azure - a reusable
+                  # workflow job can never be granted more than the caller
+                  # itself has at the top level.
 
 jobs:
   verify:
