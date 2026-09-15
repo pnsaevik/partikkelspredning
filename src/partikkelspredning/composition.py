@@ -25,20 +25,23 @@ def build_job_service(settings: Settings) -> JobService:
         notifier = ConsoleNotificationService()
 
     elif settings.storage_mode == "azure":
-        # Imported lazily so the azure-* packages are only required when
-        # this mode is actually selected - they aren't installed for local
-        # dev or the default test suite (see pyproject.toml's "azure" extra
-        # and the root README).
-        from partikkelspredning.adapters.azure.blob_result_store import BlobResultStore
-        from partikkelspredning.adapters.azure.email_notifications import AzureEmailNotificationService
-        from partikkelspredning.adapters.azure.storage_queue import StorageQueueJobQueue
-        from partikkelspredning.adapters.azure.table_repository import TableJobRepository
-
         connection_string = settings.azure_storage_connection_string
         if not connection_string:
             raise RuntimeError(
                 "AZURE_STORAGE_CONNECTION_STRING must be set when PARTIKKEL_STORAGE_MODE=azure"
             )
+
+        # Imported lazily, and only once the check above passes, so this
+        # branch raises a clear RuntimeError - not an azure-package
+        # ModuleNotFoundError - when the connection string is missing in an
+        # environment where the "azure" extra isn't installed (e.g. the
+        # default `pytest` CI job; see pyproject.toml's "azure" extra and
+        # the root README).
+        from partikkelspredning.adapters.azure.blob_result_store import BlobResultStore
+        from partikkelspredning.adapters.azure.email_notifications import AzureEmailNotificationService
+        from partikkelspredning.adapters.azure.storage_queue import StorageQueueJobQueue
+        from partikkelspredning.adapters.azure.table_repository import TableJobRepository
+
         repository = TableJobRepository(connection_string, settings.azure_table_name)
         queue = StorageQueueJobQueue(connection_string, settings.azure_queue_name)
         result_store = BlobResultStore(connection_string, settings.azure_results_container)
