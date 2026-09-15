@@ -3,19 +3,18 @@
 Kept separate from the domain's `SimulationJob` so the API controls exactly
 what's exposed (e.g. no `worker_id`, no internal lease fields - "do not
 expose internal implementation details") independently of how the domain
-model evolves. `ParameterDefinition` itself is the one exception: the
-project brief calls for it to be reused as-is by both the form generator
-and (here) the `/form` request body, so it is imported directly rather than
-duplicated.
+model evolves. The forms-registry endpoints (`GET /`, `GET /forms`) and the
+job endpoints below all serve pydantic models directly rather than
+duplicating schema classes here - see `api.routes_index` and
+`domain.forms.Form`/`domain.parameters.ParameterDefinition`.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
 from partikkelspredning.domain.jobs import JobStatus, SimulationJob
-from partikkelspredning.domain.parameters import ParameterDefinition
 
 
 class SubmitJobRequest(BaseModel):
@@ -69,8 +68,3 @@ class CompleteJobRequest(BaseModel):
 class FailJobRequest(BaseModel):
     worker_id: str
     error_message: str
-
-
-class FormRequest(BaseModel):
-    parameters: List[ParameterDefinition]
-    title: str = "Submit simulation job"

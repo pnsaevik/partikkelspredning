@@ -17,7 +17,6 @@ from typing import Optional
 
 from fastapi import FastAPI
 
-from partikkelspredning.api.routes_form import router as form_router
 from partikkelspredning.api.routes_index import router as index_router
 from partikkelspredning.api.routes_jobs import router as jobs_router
 from partikkelspredning.composition import build_forms_store, build_job_service
@@ -40,7 +39,6 @@ def create_app(settings: Optional[Settings] = None, job_service: Optional[JobSer
     app.state.settings = settings
     app.state.job_service = job_service if job_service is not None else build_job_service(settings)
     app.include_router(jobs_router)
-    app.include_router(form_router)
     app.include_router(index_router)
 
     @app.on_event("startup")

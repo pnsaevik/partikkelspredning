@@ -106,16 +106,6 @@ def test_complete_without_claiming_is_a_conflict(client):
     assert response.status_code == 409
 
 
-def test_generate_form_returns_html(client):
-    response = client.post(
-        "/form",
-        json={"parameters": [{"name": "resolution", "type": "integer", "description": "Grid resolution"}]},
-    )
-    assert response.status_code == 200
-    assert "text/html" in response.headers["content-type"]
-    assert 'name="resolution"' in response.text
-
-
 def test_index_returns_html_linking_to_pre_rendered_forms(client):
     response = client.get("/")
     assert response.status_code == 200

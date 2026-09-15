@@ -39,7 +39,6 @@ from partikkelspredning.api.schemas import (
     ClaimJobRequest,
     CompleteJobRequest,
     FailJobRequest,
-    FormRequest,
     JobResponse,
     SubmitJobRequest,
 )
@@ -53,7 +52,7 @@ from partikkelspredning.domain.errors import (
 )
 from partikkelspredning.domain.forms import Form
 from partikkelspredning.services.form_registry import load_forms
-from partikkelspredning.services.form_renderer import generate_form_html, prerender_and_store, render_index_html
+from partikkelspredning.services.form_renderer import prerender_and_store, render_index_html
 from partikkelspredning.services.job_service import JobService
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -228,21 +227,6 @@ def _fail_job(req: func.HttpRequest, job_service: JobService) -> func.HttpRespon
     return _json_response(JobResponse.from_domain(job).model_dump(mode="json"))
 
 
-def _generate_form(req: func.HttpRequest, settings: Settings) -> func.HttpResponse:
-    """Render a standalone HTML form for the given parameter definitions.
-
-    The generated page POSTs to this deployment's `/jobs` endpoint (using
-    the configured `PARTIKKEL_API_BASE_URL`) and works as a saved,
-    standalone HTML file.
-    """
-    try:
-        request = _parse_json_body(req, FormRequest)
-    except _BadRequest as exc:
-        return exc.response
-    html = generate_form_html(request.parameters, api_base_url=settings.api_base_url, title=request.title)
-    return func.HttpResponse(body=html, status_code=200, mimetype="text/html")
-
-
 def _health(req: func.HttpRequest) -> func.HttpResponse:
     """Liveness check - used by the deploy workflow's smoke test to confirm
     the Function App is actually serving requests (not just that the deploy
@@ -300,11 +284,6 @@ def complete_job(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="jobs/{job_id}/fail", methods=["POST"])
 def fail_job(req: func.HttpRequest) -> func.HttpResponse:
     return _fail_job(req, _get_job_service())
-
-
-@app.route(route="form", methods=["POST"])
-def generate_form(req: func.HttpRequest) -> func.HttpResponse:
-    return _generate_form(req, _get_settings())
 
 
 @app.route(route="health", methods=["GET"])

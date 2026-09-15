@@ -21,7 +21,6 @@ from function_app import (
     _complete_job,
     _fail_job,
     _forms_metadata,
-    _generate_form,
     _get_job,
     _health,
     _index,
@@ -151,14 +150,6 @@ def test_complete_without_claiming_is_a_conflict(job_service):
     )
     response = _complete_job(complete_req, job_service)
     assert response.status_code == 409
-
-
-def test_generate_form_returns_html(settings):
-    payload = {"parameters": [{"name": "resolution", "type": "integer", "description": "Grid resolution"}]}
-    response = _generate_form(_request("POST", "/form", json_body=payload), settings)
-    assert response.status_code == 200
-    assert "text/html" in response.mimetype
-    assert 'name="resolution"' in response.get_body().decode()
 
 
 def test_health_returns_ok():
