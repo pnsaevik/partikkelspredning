@@ -67,12 +67,16 @@ def build_form_store(settings: Settings) -> FormStore:
             f"(got {settings.storage_mode!r})"
         )
 
-    # Imported lazily, same reasoning as build_job_service's azure branch.
-    from partikkelspredning.adapters.azure.blob_form_store import BlobFormStore
-
     connection_string = settings.azure_storage_connection_string
     if not connection_string:
         raise RuntimeError(
             "AZURE_STORAGE_CONNECTION_STRING must be set when PARTIKKEL_STORAGE_MODE=azure"
         )
+
+    # Imported lazily, and only once the check above passes, so this branch
+    # raises a clear RuntimeError - not an azure-package ModuleNotFoundError
+    # - when the connection string is missing in an environment where the
+    # "azure" extra isn't installed (e.g. the default `pytest` CI job).
+    from partikkelspredning.adapters.azure.blob_form_store import BlobFormStore
+
     return BlobFormStore(connection_string, settings.azure_forms_container)
