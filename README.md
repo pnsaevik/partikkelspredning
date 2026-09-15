@@ -6,10 +6,10 @@ JSON object - there is no predefined parameter schema this backend
 validates against; it accepts and stores the job as queued. A future
 compute server (**not implemented here**) will claim queued jobs and is the
 one that decides whether a given job's parameters are actually runnable,
-then reports completion or failure back. A convenience endpoint
-(`POST /form`) can generate a static HTML form for a specific parameter set
-(e.g. resolution/duration/experiment), but that form isn't deployed by this
-repo and its shape has no bearing on what `POST /jobs` will accept.
+then reports completion or failure back. A small registry of named,
+pre-configured forms (`GET /`, `GET /forms`) lets an operator discover and
+submit standard experiments without knowing URLs or parameter sets in
+advance; a form's shape has no bearing on what `POST /jobs` will accept.
 
 The first deployment target is Azure, but the architecture deliberately
 minimizes vendor lock-in: business logic never imports an Azure SDK.
@@ -26,39 +26,39 @@ Layered / ports-and-adapters:
                                         │ calls
                           ┌─────────────▼─────────────┐
                           │   services/  (JobService,  │
-                          │   form_service)             │
+                          │   form_registry,            │
+                          │   form_renderer)             │
                           └──────┬───────────────┬─────┘
                                  │ uses           │ uses
                      ┌───────────▼───┐      ┌─────▼───────────┐
                      │  domain/       │      │  ports/  (Protocols)│
                      │  SimulationJob,│      │  JobRepository,      │
                      │  JobStatus,    │      │  JobQueue,            │
-                     │  parameters    │      │  ResultStore,          │
-                     └────────────────┘      │  NotificationService   │
-                                              └──────────┬─────────────┘
+                     │  parameters,   │      │  ResultStore,          │
+                     │  forms         │      │  NotificationService,  │
+                     │                │      │  FormStore             │
+                     └────────────────┘      └──────────┬─────────────┘
                                  implemented by ┌─────────┴─────────┐
                                                 │                   │
                                      ┌──────────▼───────┐ ┌─────────▼─────────┐
                                      │ adapters/local/   │ │ adapters/azure/    │
-                                     │ CSV files, disk,  │ │ Table Storage,      │
-                                     │ console logging   │ │ Storage Queue,       │
-                                     │ (no cloud creds)  │ │ Blob Storage         │
+                                     │ FormStore only     │ │ Table Storage,      │
+                                     │ (no cloud creds)   │ │ Storage Queue,       │
+                                     │                     │ │ Blob Storage,        │
+                                     │                     │ │ incl. FormStore      │
                                      └───────────────────┘ └─────────────────────┘
 ```
 
-```
-local:  browser -> uvicorn -> FastAPI app (partikkelspredning.main:app)
-Azure:  browser -> Azure Functions -> HTTP-triggered functions
-                                       (api/function_app.py)
-```
-
-The Azure Functions adapter doesn't reimplement the business logic: each
-HTTP-triggered function in `api/function_app.py` is a thin wrapper that
-translates a request straight into a call on the same `JobService` the
-FastAPI routes use, reusing the same request/response schemas and domain
-error handling - so the two hosting modes can't drift apart on anything but
-HTTP transport. Unlike the FastAPI app, it has no interactive `/docs` (see
-"API" below).
+Azure Functions is the only real hosting target
+(`api/function_app.py`, HTTP-triggered functions calling straight into
+`JobService`/the forms registry). The FastAPI app
+(`partikkelspredning.api.app`) still exists, but only so
+`tests/test_api.py` can exercise the same routing/schema behavior via
+`TestClient` - there is no local, uvicorn-hosted deployment target any
+more. Both share the same request/response schemas and domain error
+handling, so the two can't drift apart on anything but HTTP transport; the
+FastAPI app additionally gets interactive `/docs` "for free" (see "API"
+below), which the Function App has no equivalent of.
 
 ### Separation of concerns
 
@@ -67,16 +67,19 @@ HTTP transport. Unlike the FastAPI app, it has no interactive `/docs` (see
 | Domain | `src/partikkelspredning/domain/` | pydantic only |
 | Services | `src/partikkelspredning/services/` | domain, ports |
 | Ports | `src/partikkelspredning/ports/` | domain (typing only) |
-| Local adapters | `src/partikkelspredning/adapters/local/` | domain, ports, pandas |
+| Local adapters | `src/partikkelspredning/adapters/local/` | domain, ports |
 | Azure adapters | `src/partikkelspredning/adapters/azure/` | domain, ports, `azure.*` |
 | API | `src/partikkelspredning/api/` | everything above, FastAPI |
 | Azure Functions | `api/function_app.py` | `partikkelspredning`, `azure.functions` |
 
 **`domain/`, `services/`, and `ports/` contain no `azure`, `azure-functions`,
-`pandas`, or `fastapi` imports.** `partikkelspredning.composition` is the one
-place ("composition root") that picks concrete adapters based on
-configuration and wires them into a `JobService`; nothing above it needs to
-know which adapters were chosen.
+or `fastapi` imports.** `partikkelspredning.composition` is the one place
+("composition root") that picks concrete adapters based on configuration
+and wires them into a `JobService`/`FormStore`; nothing above it needs to
+know which adapters were chosen. Job storage (repository, queue, result
+store, notifications) is always Azure - there is no local adapter for it;
+`adapters/local/` now holds only a filesystem `FormStore`, used for local
+development and the default test suite's coverage of the forms registry.
 
 ## Job lifecycle
 
@@ -98,7 +101,7 @@ implement a lease/timeout/retry mechanism. `SimulationJob` already carries
 added without a data migration. The Azure Storage Queue adapter's
 visibility timeout already gives a basic form of this for the *claim* step
 itself (an unacknowledged claim becomes reclaimable once the timeout
-expires); the local CSV queue adapter does not.
+expires).
 
 ## Parameter definitions
 
@@ -111,30 +114,32 @@ interact with the API" below).
 
 `partikkelspredning.domain.parameters.ParameterDefinition` (`name`, `type`,
 `description`; only `integer`, `float`, and `text` types are supported)
-exists purely to describe the fields of *one* generated form. `POST /form`
-takes a list of these directly in its request body and renders a
-standalone, dependency-free HTML page for that specific parameter set (e.g.
-resolution/duration/experiment) - a static-site-generator convenience, not
-something this repo deploys or hosts. Its output has no bearing on what
+exists purely to describe the fields of one generated form.
+`partikkelspredning.domain.forms.Form` pairs a set of these with an id,
+name, and description - the shape of one entry in the forms registry (see
+"Multiple forms registry" below). Its output has no bearing on what
 `POST /jobs` will accept: a form generated for one parameter list, and a
 job submitted with entirely different parameters, are both valid as far as
 this backend is concerned.
 
 ## API
 
-Interactive OpenAPI docs are available at `/docs` (FastAPI's default) when
-running locally via `uvicorn`. The deployed Azure Function App serves the
-same endpoints (see "Azure deployment" below) but has no such docs page,
-since it isn't hosting the FastAPI app.
+Interactive OpenAPI docs are available at `/docs` (FastAPI's default) if you
+run the FastAPI app (`partikkelspredning.api.app:create_app`) yourself, e.g.
+with a locally-installed `uvicorn` - this app isn't deployed anywhere by
+this repo (see "Architecture" above), it exists for `tests/test_api.py`.
+The deployed Azure Function App serves the same endpoints (see "Azure
+deployment" below) but has no such docs page.
 
 | Method & path | Purpose |
 |---|---|
+| `GET /` | Landing page listing every pre-configured form, linking to its pre-rendered HTML page. |
+| `GET /forms` | The same forms as JSON, for programmatic access: id, name, description, parameters, url. |
 | `POST /jobs` | Submit a new job: `{user_email, parameters, metadata?}` -> `{job_id, status, ...}` |
 | `GET /jobs/{job_id}` | Get a job's current state. Unknown id -> 404. |
 | `POST /jobs/claim` | For the future compute server: atomically claim one queued job. `{worker_id}` -> the job, or 204 if none available. |
 | `POST /jobs/{job_id}/complete` | For the future compute server: report success. `{worker_id, result_reference}`. |
 | `POST /jobs/{job_id}/fail` | For the future compute server: report failure. `{worker_id, error_message}`. |
-| `POST /form` | Generate a standalone HTML submission form from `{parameters, title?}`. |
 
 `claim`/`complete`/`fail` are the interface the (not-yet-implemented)
 compute server will use; see Security below for how they're expected to
@@ -156,12 +161,13 @@ call.
 
 ## Vendor independence / dependency injection
 
-`PARTIKKEL_STORAGE_MODE` (`local` or `azure`) selects the adapter set;
-`partikkelspredning.composition.build_job_service` is the only code that
-imports both adapter families and chooses between them. This is orthogonal
-to *hosting* (uvicorn vs. Azure Functions) - you can, for instance, run the
-FastAPI app locally with `uvicorn` against real Azure Storage by setting
-`PARTIKKEL_STORAGE_MODE=azure` locally.
+Job storage (repository, queue, result store, notifications) is always
+Azure - `partikkelspredning.composition.build_job_service` always builds
+the real Azure adapters and requires `AZURE_STORAGE_CONNECTION_STRING`.
+`PARTIKKEL_STORAGE_MODE` (`local`, the default, or `azure`) instead selects
+where *pre-rendered forms* are stored: `build_forms_store` returns a
+filesystem-backed `FormStore` in `local` mode (no cloud credentials
+needed) or a Blob Storage-backed one in `azure` mode.
 
 ## Configuration
 
@@ -171,10 +177,10 @@ hard-coded:
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `PARTIKKEL_STORAGE_MODE` | `local` or `azure` | `local` |
+| `PARTIKKEL_STORAGE_MODE` | `local` or `azure` - selects **forms** storage only (job storage is always Azure) | `local` |
 | `PARTIKKEL_API_BASE_URL` | API base URL baked into generated forms | `http://localhost:8000` |
-| `PARTIKKEL_LOCAL_DATA_DIR` | local mode: where CSV/results files live | `./data` |
-| `AZURE_STORAGE_CONNECTION_STRING` | azure mode: shared connection string | *(required in azure mode)* |
+| `PARTIKKEL_FORMS_LOCAL_DIR` | local mode: where pre-rendered forms are written | `./data/forms` |
+| `AZURE_STORAGE_CONNECTION_STRING` | shared connection string - **always required** for job storage; also required when `PARTIKKEL_STORAGE_MODE=azure` | *(required)* |
 | `PARTIKKEL_AZURE_TABLE_NAME` | azure mode: job metadata table | `jobs` |
 | `PARTIKKEL_AZURE_QUEUE_NAME` | azure mode: job queue | `jobs` |
 | `PARTIKKEL_AZURE_RESULTS_CONTAINER` | azure mode: results blob container | `results` |
@@ -210,45 +216,35 @@ This is a prototype; the following is deliberately minimal but not ignored:
 
 ## Running locally
 
-```bash
-pip install -e ".[dev,local]"
-uvicorn partikkelspredning.main:app --reload
-```
-
-Visit `http://localhost:8000/docs` for interactive API docs.
-
-### How CSV persistence works
-
-In `local` mode (the default), `partikkelspredning.adapters.local`:
-
-* stores job metadata/state as rows in `PARTIKKEL_LOCAL_DATA_DIR/jobs.csv`
-  (via pandas),
-* stores the queue as one job id per line in
-  `PARTIKKEL_LOCAL_DATA_DIR/queue.txt`,
-* stores results under `PARTIKKEL_LOCAL_DATA_DIR/results/`, and
-* logs notifications to the console instead of sending email.
-
-Both CSV-backed files are guarded by an `fcntl`-based exclusive file lock
-around each read-modify-write, so a local process (or a few concurrent
-ones, as in tests) behaves predictably. This is intentionally simple and
-not meant to become a production database - see `adapters/azure/` for that.
-
-### Generating the static form
+Azure Functions is the only real hosting target - see
+[`api/README.md`](api/README.md)'s "Run locally" section for the
+[Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local)
+setup (`func start`). Job storage needs a real (or
+[Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite)-emulated)
+Azure Storage account even for local `func start` - there is no local job
+storage any more (see "Vendor independence" above).
 
 ```bash
-curl -X POST http://localhost:8000/form \
-  -H "Content-Type: application/json" \
-  -d '{"parameters": [
-        {"name": "resolution", "type": "integer", "description": "Horizontal grid resolution"},
-        {"name": "duration", "type": "float", "description": "Simulation duration in days"},
-        {"name": "experiment", "type": "text", "description": "Name of the experiment"}
-      ]}' \
-  -o form.html
+pip install -e ".[dev]"
 ```
 
-`form.html` is a complete, dependency-free page - open it directly in a
-browser. It submits to `PARTIKKEL_API_BASE_URL`'s `/jobs` endpoint, so
-regenerate it if that URL changes.
+installs everything needed to run the test suite (which uses fakes and a
+local `FormStore`, no Azure account needed - see "Tests" below).
+
+### Multiple forms registry
+
+`src/partikkelspredning/forms/definitions.json` lists named,
+pre-configured forms (id, name, description, parameters - see
+`partikkelspredning.domain.forms.Form`). At startup,
+`partikkelspredning.services.form_registry.load_forms` parses that file and
+`services.form_renderer.prerender_and_store` renders + uploads each one via
+the configured `FormStore` (local disk or Azure Blob Storage, see
+"Configuration" above) - a malformed registry or unreachable store fails
+startup outright rather than surfacing later. `GET /` then serves a
+pre-rendered index page linking to each form, and `GET /forms` serves the
+same data as JSON, including each form's URL. Forms are source-code-only in
+this iteration - adding one means editing `definitions.json` and
+redeploying, there's no admin endpoint yet.
 
 ### Deploying the public job-submission form
 
@@ -285,8 +281,10 @@ Covers (with no Azure credentials or SDKs required):
 * job creation and every state transition, including rejected ones
 * claiming queued jobs and preventing duplicate claims
 * completing and failing jobs, including notification and ownership checks
-* the local CSV repository and queue adapters
-* a small number of FastAPI endpoint tests
+* the forms registry: loading/validating `definitions.json`, rendering,
+  the local and Azure `FormStore` selection
+* a small number of FastAPI endpoint tests and `api/function_app.py`
+  Azure Functions handler tests, both using a fakes-backed `JobService`
 
 Optional Azure integration tests live in `tests/azure_integration/` behind
 the `azure_integration` pytest marker (excluded by default - see
@@ -308,9 +306,10 @@ and how to deploy it.
 ## Scope of this iteration
 
 Implemented: job submission, validation, the queued/processing/completed/failed
-lifecycle, claim/complete/fail endpoints, static form generation, a
-manually-deployed public job-submission form on Azure Blob Storage, local and
-Azure adapters for storage.
+lifecycle, claim/complete/fail endpoints, a multiple-forms registry
+pre-rendered at startup (`GET /`, `GET /forms`), a manually-deployed public
+job-submission form on Azure Blob Storage, Azure adapters for job storage,
+and local/Azure adapters for forms storage.
 
 **Not implemented** (see the project brief): the compute server / ocean
 model itself, real email delivery, sophisticated authentication, a

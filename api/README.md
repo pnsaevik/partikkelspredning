@@ -4,10 +4,13 @@ This folder is a thin Azure Functions **adapter**: it is one of only two
 places (besides [`../src/partikkelspredning/adapters/azure/`](../src/partikkelspredning/adapters/azure))
 that import Azure SDKs. `function_app.py` declares one HTTP-triggered Azure
 Function per endpoint; each is a thin wrapper that translates between
-`azure.functions.HttpRequest`/`HttpResponse` and `JobService` - the same
-service class `partikkelspredning.api.routes_jobs`/`routes_form` call for
-local, uvicorn-hosted development (see `function_app.py`'s module
-docstring). See [the root README](../README.md) for the full architecture.
+`azure.functions.HttpRequest`/`HttpResponse` and `JobService`/the forms
+registry - the same services `partikkelspredning.api.routes_jobs`/
+`routes_index` call for the FastAPI app that `tests/test_api.py` exercises
+directly (see `function_app.py`'s module docstring). Azure Functions is the
+only real hosting target for this application - there is no local,
+uvicorn-hosted deployment any more. See [the root README](../README.md) for
+the full architecture.
 
 ## Run locally
 
@@ -23,19 +26,23 @@ pip install -e ..   # partikkelspredning itself, editable - see "How packaging w
 func start
 ```
 
-The same endpoints as running `uvicorn` directly are then available at
-`http://localhost:7071` (see the root README) - `host.json` sets
-`extensions.http.routePrefix` to `""` (no `/api` prefix) so the routes match
-exactly, including `GET /health` (a liveness check with no equivalent in
-the FastAPI app, used by the deploy workflow's smoke test below).
+The same endpoints are available at `http://localhost:7071` (see the root
+README) - `host.json` sets `extensions.http.routePrefix` to `""` (no `/api`
+prefix) so the routes match exactly, including `GET /health` (a liveness
+check with no equivalent in the FastAPI app, used by the deploy workflow's
+smoke test below).
 
-`local.settings.json` defaults `PARTIKKEL_STORAGE_MODE` to `local`, so
-`func start` works with no Azure Storage account for the *application's
-own* data - CSV files are written under `PARTIKKEL_LOCAL_DATA_DIR`. Note
-that `AzureWebJobsStorage` (required by the Functions *host* itself, not by
-our code) is left blank here; a real deployment needs it set, either to a
-real storage account connection string or `UseDevelopmentStorage=true`
-against the [Azurite emulator](https://learn.microsoft.com/azure/storage/common/storage-use-azurite).
+Job storage is always Azure - there is no local fallback - so `func start`
+needs a real `AZURE_STORAGE_CONNECTION_STRING` set in `local.settings.json`
+even for local development (a real storage account, or the
+[Azurite emulator](https://learn.microsoft.com/azure/storage/common/storage-use-azurite)
+with `UseDevelopmentStorage=true`). `local.settings.json` defaults
+`PARTIKKEL_STORAGE_MODE` to `local`, which only affects *forms* storage:
+pre-rendered forms are written under `PARTIKKEL_FORMS_LOCAL_DIR` instead of
+Azure Blob Storage, so trying out the forms registry (`GET /`, `GET
+/forms`) needs no separate container. Note that `AzureWebJobsStorage`
+(required by the Functions *host* itself, not by our code) is left blank
+in the checked-in template; a real deployment needs it set the same way.
 
 ## Continuous integration and deployment (GitHub Actions)
 

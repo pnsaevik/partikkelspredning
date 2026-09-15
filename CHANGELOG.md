@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Multiple forms registry: `src/partikkelspredning/forms/definitions.json`
+  lists named, pre-configured forms (id, name, description, parameters -
+  `domain.forms.Form`), loaded and validated at startup by
+  `services.form_registry.load_forms` (fail-fast on a malformed file,
+  missing fields, or duplicate ids). Each form is rendered and uploaded via
+  a `FormStore` once, at startup (`services.form_renderer
+  .prerender_and_store`), rather than generated per request. `GET /`
+  serves a pre-rendered landing page linking to every form; `GET /forms`
+  serves the same data as JSON (id, name, description, parameters, url)
+  for programmatic access. Both are implemented identically in the FastAPI
+  app (`api.routes_index`, used only by `tests/test_api.py`) and in
+  `api/function_app.py`'s Azure Functions handlers.
+- `composition.build_forms_store` and `adapters/local/form_store.py`'s
+  `LocalFormStore`: the forms registry's `FormStore` is selected by
+  `PARTIKKEL_STORAGE_MODE` - `local` (default) writes pre-rendered HTML to
+  `PARTIKKEL_FORMS_LOCAL_DIR` (new setting, default `./data/forms`) with no
+  cloud credentials needed; `azure` reuses the existing `BlobFormStore`/
+  `PARTIKKEL_AZURE_FORMS_CONTAINER`. Separate from - and unrelated to -
+  `build_form_store`, which still deploys only the pre-existing single
+  public job-submission form and is unchanged.
+
+### Removed
+
+- **Local job storage and the local, uvicorn-hosted deployment mode.**
+  `adapters/local/csv_repository.py`, `csv_queue.py`,
+  `filesystem_result_store.py`, `console_notifications.py`, and
+  `src/partikkelspredning/main.py` are gone; `pandas` and the `local`
+  pyproject extra (`uvicorn[standard]`) are no longer dependencies. Job
+  storage (repository, queue, result store, notifications) is now
+  unconditionally the real Azure adapters - `build_job_service` always
+  requires `AZURE_STORAGE_CONNECTION_STRING`, regardless of
+  `PARTIKKEL_STORAGE_MODE` (which now only selects *forms* storage, see
+  above). **Azure Functions (`func start` / a deployed Function App) is
+  the only way to run this application for real now** - the FastAPI app
+  (`partikkelspredning.api.app`) still exists, but solely so
+  `tests/test_api.py` can exercise the same HTTP routing/schema behavior
+  via `TestClient`; it is never deployed. `PARTIKKEL_LOCAL_DATA_DIR` is
+  removed (see `PARTIKKEL_FORMS_LOCAL_DIR` above).
+- The dynamic `POST /form` endpoint (generate-any-parameter-set-on-demand)
+  is superseded by the pre-rendered forms registry above and removed,
+  along with `api.schemas.FormRequest`. `services.form_renderer
+  .generate_form_html` (renamed from `services.form_service
+  .generate_form_html`, same behavior) is unaffected and still used by the
+  forms registry and the unrelated `public_form_service`.
+
 ## [0.1.9] - 2026-09-15
 
 ### Added
