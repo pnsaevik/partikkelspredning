@@ -6,8 +6,8 @@ As an operator, I want to discover and access pre-configured simulation forms fr
 
 ## Acceptance Criteria
 
-1. **Form definitions in JSON:** Forms are defined in a single `api/forms.json` file, each with a name, description, and full parameter list (compatible with existing `ParameterDefinition` structure)
-2. **Pre-rendered forms at startup:** On app startup (both Azure Functions and local dev), all forms in `api/forms.json` are pre-rendered to static HTML files and stored via a `FormsStore` adapter (blob storage in Azure, local disk in development)
+1. **Form definitions in JSON:** Forms are defined in a single `src/partikkelspredning/forms/definitions.json` file, each with a name, description, and full parameter list (compatible with existing `ParameterDefinition` structure)
+2. **Pre-rendered forms at startup:** On app startup (both Azure Functions and local dev), all forms in `src/partikkelspredning/forms/definitions.json` are pre-rendered to static HTML files and stored via a `FormsStore` adapter (blob storage in Azure, local disk in development)
 3. **Index landing page:** `GET /` endpoint returns an HTML page listing all available forms with clickable links to the pre-rendered form pages
 4. **Forms metadata endpoint:** `GET /forms` endpoint returns a JSON object with form metadata (id, name, description, parameter definitions) for programmatic access
 5. **Static file serving:** Pre-rendered forms are served as static HTML assets from blob storage (Azure) or disk (development), not generated on-demand
@@ -26,10 +26,12 @@ As an operator, I want to discover and access pre-configured simulation forms fr
 ### Architecture & Files
 
 **New files:**
-- `api/forms.json` – Form definitions (name, description, parameters list)
-- `src/partikkelspredning/services/form_registry.py` – Service to load forms.json and prepare form definitions (business logic, no Azure/FastAPI/pandas imports)
+- `src/partikkelspredning/forms/definitions.json` – Form definitions (name, description, parameters list)
+- `src/partikkelspredning/services/form_registry.py` – Service to load definitions.json and prepare form definitions (business logic, no Azure/FastAPI/pandas imports)
 - `src/partikkelspredning/ports/forms_store.py` – `FormsStore` protocol (port) defining interface for storing/retrieving pre-rendered forms
 - `src/partikkelspredning/adapters/azure/forms_store.py` – Azure blob storage implementation of FormsStore
+- `src/partikkelspredning/adapters/local/forms_store.py` – Local filesystem implementation of FormsStore (for development/testing)
+- `src/partikkelspredning/services/form_renderer.py` – Pre-rendering utility (generates HTML from Form definitions, calls FormsStore to persist)
 - `src/partikkelspredning/api/routes_index.py` – `GET /` and `GET /forms` endpoints
 
 **Modified files:**
@@ -40,12 +42,14 @@ As an operator, I want to discover and access pre-configured simulation forms fr
 - `src/partikkelspredning/config.py` – Add configuration for forms.json path (default `api/forms.json` relative to package)
 
 **Removed/deprecated:**
-- `src/partikkelspredning/adapters/local/` – Removed entirely
-- `src/partikkelspredning/services/form_service.py` – Dynamic form generation (replace with pre-rendered approach); tests updated accordingly
+- `src/partikkelspredning/adapters/local/` – Entire directory removed (CSV, queue, result store adapters no longer needed; replaced with Azure-only + local FormsStore for testing)
+- `src/partikkelspredning/services/form_service.py` – Dynamic form generation replaced by pre-rendering
 - `src/partikkelspredning/api/routes_form.py` – Dynamic `/form` endpoint removed
+- `tests/test_form_service.py` and `tests/test_public_form_service.py` – Tests for removed functionality
+- `src/partikkelspredning/main.py` – uvicorn entry point (local deployment removed)
 - `uvicorn` from dependencies
 
-### JSON Schema (api/forms.json)
+### JSON Schema (src/partikkelspredning/forms/definitions.json)
 
 ```json
 {
@@ -108,11 +112,38 @@ As an operator, I want to discover and access pre-configured simulation forms fr
 2. **Forms as Python datafiles:** Rejected because JSON is more portable and allows non-devs to manage forms
 3. **Keep local mode alongside Azure:** Rejected because no users rely on it, and it adds maintenance burden
 
-## Design Decisions to Finalize During Phase 2
+## Design Decisions (Finalized)
 
-- **Blob storage path structure:** Forms will be stored as `/forms/{form_id}.html` in blob storage; index page links point to these paths
-- **Index page caching:** Index page (HTML list of forms) is pre-rendered once at startup, then cached. Changes to forms.json require app restart.
-- **Missing forms.json handling:** If forms.json is not found on startup, app logs a warning and continues with an empty forms list (graceful degradation)
-- **Concurrent startup:** If app starts in multiple instances simultaneously, all will try to pre-render; blob storage PUT operations are idempotent, so this is safe
+### Data and Configuration
+- **forms.json location:** `src/partikkelspredning/forms/definitions.json` (packaged with source code, loaded via package resources at runtime)
+- **Configuration:** Add to `src/partikkelspredning/config.py`:
+  - `FORMS_DEFINITIONS_PATH` (default: `forms/definitions.json` relative to package)
+  - `FORMS_BLOB_CONTAINER` (for Azure, the container name storing pre-rendered forms)
+  - `FORMS_LOCAL_DIR` (for local development, directory for storing pre-rendered forms)
+
+### Static File Serving
+- **Blob storage path structure:** Forms stored as `forms/{form_id}.html` in blob storage container
+- **Serving mechanism:** Index page and `GET /forms` endpoint include full blob storage URLs; clients access forms directly from blob storage (no proxying through API)
+- **URL format:** `https://{storage_account}.blob.core.windows.net/{container_name}/forms/{form_id}.html` (Azure), or local file path (development)
+
+### Startup and Error Handling
+- **Startup pre-rendering:** Forms are pre-rendered to storage on app initialization (before accepting requests)
+- **Startup failure behavior:** Fast-fail—if pre-rendering fails, the app raises an exception and fails to start. This ensures forms are always available when the app is running.
+- **Index page caching:** Index page (HTML list) is pre-rendered once at startup and cached in memory. Changes to `forms.json` require app restart.
+- **Concurrent startup:** If multiple instances start simultaneously, all attempt pre-rendering; blob storage operations are idempotent (safe).
+
+### Storage Abstraction
+- **FormsStore implementations:**
+  - `AzureFormsStore`: Stores/retrieves pre-rendered forms from Azure blob storage
+  - `LocalFormsStore`: Stores/retrieves pre-rendered forms from local filesystem (for development/testing)
+- **Selection at runtime:** `composition.py` instantiates the appropriate implementation based on configuration
+- **Abstraction rationale:** Maintains flexibility for future cloud vendor changes; enables local development without Azurite
+
+### Removed Functionality
+- **Removed code:** `src/partikkelspredning/services/form_service.py` (dynamic form generation), `src/partikkelspredning/api/routes_form.py` (dynamic `/form` endpoint)
+- **Removed tests:** `tests/test_form_service.py`, `tests/test_public_form_service.py` (these test functionality that is being replaced)
+- **Removed adapters:** `src/partikkelspredning/adapters/local/` (entire local adapter directory)
+- **Removed entry points:** `src/partikkelspredning/main.py` (uvicorn entry point deprecated)
+- **Removed dependencies:** `uvicorn` from `pyproject.toml`
 
 (No architectural blockers identified.)
