@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PARTIKKEL_AZURE_FORMS_CONTAINER` setting (default `forms`). Unrelated to
   the existing `POST /form` endpoint, which still renders any parameter set
   on demand without deploying it anywhere.
+- A `staging` deployment target for trying out Azure-specific behavior
+  before merging: `deploy_staging.yml`, runnable only on demand
+  (`gh workflow run deploy_staging.yml --ref <branch>`, never on push/PR/tag),
+  deploys `api/` to a new, separate `partikkelspredning-api-staging`
+  Function App with its own resource group and storage account, so it can
+  never touch production data. `action_deploy.yml` now takes `app-name`/
+  `environment` inputs (defaulting to the existing production values, so
+  `deploy.yml` needed no changes) to let both workflows share the same
+  deploy logic. See `api/README.md`'s "Continuous integration and
+  deployment" section for the one-time OIDC/environment setup this needed.
 
 ## [0.1.8] - 2026-09-14
 

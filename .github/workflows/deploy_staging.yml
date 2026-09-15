@@ -1,0 +1,34 @@
+name: Deploy to staging
+
+# Deploys api/ to partikkelspredning-api-staging (in
+# partikkelspredning-staging-rg), a separate Function App with its own
+# storage account - nothing this touches can affect production data or the
+# partikkelspredning-api app. Unlike deploy.yml, this never runs
+# automatically (no tag push, no PR): it exists purely as an on-request
+# testbed for trying out a branch's Azure-specific behavior before
+# opening/merging its PR.
+#
+# Run with: gh workflow run deploy_staging.yml --ref <branch>
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write # required so the nested `deploy` job (action_deploy.yml)
+                  # can request it for OIDC login to Azure - a reusable
+                  # workflow job can never be granted more than the caller
+                  # itself has at the top level.
+
+jobs:
+  test:
+    name: Test
+    uses: ./.github/workflows/action_pytest.yml
+
+  deploy:
+    name: Deploy
+    needs: test
+    uses: ./.github/workflows/action_deploy.yml
+    with:
+      app-name: partikkelspredning-api-staging
+      environment: staging

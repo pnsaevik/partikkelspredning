@@ -1,12 +1,26 @@
 name: Deploy to Azure Functions
 
-on: workflow_call
+# `app-name`/`environment` default to today's production target, so
+# deploy.yml (which calls this with no `with:` block) is completely
+# unaffected by these inputs existing - they only matter to a caller that
+# deliberately overrides them (see deploy_staging.yml, which targets the
+# separate `staging` GitHub environment and the `partikkelspredning-api-staging`
+# Function App/resource group instead).
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        type: string
+        default: partikkelspredning-api
+      environment:
+        type: string
+        default: production
 
 jobs:
   deploy:
     name: Deploy to Azure Functions
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
       id-token: write # required for OIDC login to Azure (azure/login)
@@ -44,7 +58,7 @@ jobs:
         # step's own success/failure signal.
         uses: Azure/functions-action@v1
         with:
-          app-name: partikkelspredning-api
+          app-name: ${{ inputs.app-name }}
           package: api
           sku: flexconsumption
           remote-build: true
@@ -54,7 +68,7 @@ jobs:
         # up serving zero functions (see note above) - so verify directly
         # that a real route responds instead of trusting that step alone.
         run: |
-          url="https://partikkelspredning-api.azurewebsites.net/health"
+          url="https://${{ inputs.app-name }}.azurewebsites.net/health"
           for i in $(seq 1 10); do
             code="$(curl -s -o /dev/null -w '%{http_code}' "$url")"
             if [ "$code" = "200" ]; then
