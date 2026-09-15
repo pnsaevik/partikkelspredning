@@ -19,6 +19,7 @@ import pytest
 
 pytest.importorskip("azure.data.tables")
 pytest.importorskip("azure.storage.queue")
+pytest.importorskip("azure.storage.blob")
 
 CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
 
@@ -53,3 +54,21 @@ def test_storage_queue_round_trip():
 
     assert claimed == "job-123"
     assert queue.try_claim() is None
+
+
+def test_blob_form_store_round_trip():
+    from azure.storage.blob import BlobClient
+
+    from partikkelspredning.adapters.azure.blob_form_store import BlobFormStore
+
+    form_store = BlobFormStore(CONNECTION_STRING, container_name=f"testforms{uuid.uuid4().hex[:8]}")
+
+    url = form_store.upload_form_html("my-form", "<html><body>hi</body></html>")
+
+    # No credential passed: proves the blob is readable by an anonymous
+    # client, i.e. that the container was created with public read access.
+    anonymous_client = BlobClient.from_blob_url(url)
+    downloaded = anonymous_client.download_blob()
+
+    assert downloaded.readall() == b"<html><body>hi</body></html>"
+    assert downloaded.properties.content_settings.content_type == "text/html"

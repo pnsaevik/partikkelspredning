@@ -178,6 +178,7 @@ hard-coded:
 | `PARTIKKEL_AZURE_TABLE_NAME` | azure mode: job metadata table | `jobs` |
 | `PARTIKKEL_AZURE_QUEUE_NAME` | azure mode: job queue | `jobs` |
 | `PARTIKKEL_AZURE_RESULTS_CONTAINER` | azure mode: results blob container | `results` |
+| `PARTIKKEL_AZURE_FORMS_CONTAINER` | azure mode: public forms blob container | `forms` |
 
 ## Security
 
@@ -202,6 +203,10 @@ This is a prototype; the following is deliberately minimal but not ignored:
 * `JobService` additionally checks that only the worker that claimed a job
   can complete/fail it (`JobOwnershipError`) - a correctness safeguard
   against bugs, not a substitute for real authentication.
+* The one exception to "no public storage" is the public job-submission
+  form's blob container (see "Deploying the public job-submission form"
+  above): it is intentionally created with anonymous read access, since it
+  holds only a static, non-secret HTML page.
 
 ## Running locally
 
@@ -245,6 +250,28 @@ curl -X POST http://localhost:8000/form \
 browser. It submits to `PARTIKKEL_API_BASE_URL`'s `/jobs` endpoint, so
 regenerate it if that URL changes.
 
+### Deploying the public job-submission form
+
+Separately from the `/form` endpoint above, a single fixed parameter set
+(`resolution`, `duration`) can be deployed as a public, standalone HTML page
+in Azure Blob Storage, so external users can submit a job without calling
+the API directly - the notification email is collected by the standard
+`user_email` field every generated form already has, so it isn't repeated
+as its own parameter. This is Azure-only (no local-mode target) and is
+triggered manually, not by an HTTP endpoint:
+
+```bash
+pip install -e ".[azure]"
+PARTIKKEL_STORAGE_MODE=azure AZURE_STORAGE_CONNECTION_STRING="..." \
+  python scripts/deploy_public_form.py
+```
+
+Prints the deployed form's public URL on success. The form is uploaded to
+the `PARTIKKEL_AZURE_FORMS_CONTAINER` container (see Configuration above),
+created with public (anonymous) read access - the page is static and
+non-secret, so this is an intentional exception to the rest of this
+project's "no public storage" posture (see Security below).
+
 ## Tests
 
 ```bash
@@ -281,7 +308,8 @@ and how to deploy it.
 ## Scope of this iteration
 
 Implemented: job submission, validation, the queued/processing/completed/failed
-lifecycle, claim/complete/fail endpoints, static form generation, local and
+lifecycle, claim/complete/fail endpoints, static form generation, a
+manually-deployed public job-submission form on Azure Blob Storage, local and
 Azure adapters for storage.
 
 **Not implemented** (see the project brief): the compute server / ocean

@@ -39,7 +39,7 @@ against the [Azurite emulator](https://learn.microsoft.com/azure/storage/common/
 
 ## Continuous integration and deployment (GitHub Actions)
 
-CI is split into three gates:
+CI is split into four gates:
 
 * **Every push**, any branch (`workflow_push.yml`): runs the test suite
   (`action_pytest.yml`), including `tests/test_function_app.py`'s direct
@@ -60,21 +60,45 @@ CI is split into three gates:
   on demand against any branch (`gh workflow run deploy.yml --ref
   <branch>`), skipping the tag checks, to test a deploy before merging.
 
-The workflow authenticates to Azure via OIDC (a federated credential on an
-Azure AD app registration scoped to this repo's `production` GitHub
-environment) rather than a stored long-lived secret. One-time setup for a
-new deployment target, already done for `partikkelspredning-api`:
+`action_deploy.yml` (the reusable workflow that actually does the deploy)
+takes `app-name`/`environment` inputs, defaulting to `partikkelspredning-api`
+/ `production` - so `deploy.yml` itself needs no changes to keep deploying
+there. `deploy_staging.yml` calls the same reusable workflow with those
+inputs overridden to target a second, entirely separate Function App:
+
+* **Every push to a branch with an open PR into `main`** (`deploy_staging.yml`,
+  `pull_request`'s `synchronize` event - also runnable by hand for a branch
+  with no PR yet: `gh workflow run deploy_staging.yml --ref <branch>`):
+  deploys `api/` to `partikkelspredning-api-staging` (resource group
+  `partikkelspredning-staging-rg`), which has its own storage account -
+  nothing it does can affect `partikkelspredning-api`'s data. Meant as a
+  testbed for trying out a branch's Azure-specific behavior (e.g. the
+  public form's Blob Storage upload) before merging its PR. A
+  `pull_request`-triggered run uses the workflow file from the PR branch
+  itself, so this works even before `deploy_staging.yml` has been merged to
+  `main` - unlike `workflow_dispatch`, which GitHub only ever discovers
+  from the default branch.
+
+Both workflows authenticate to Azure via OIDC (a federated credential on an
+Azure AD app registration scoped to a specific GitHub *environment* -
+`production` or `staging`) rather than a stored long-lived secret. One-time
+setup for a new deployment target, already done for both
+`partikkelspredning-api` and `partikkelspredning-api-staging`:
 
 1. In the Azure AD tenant: an app registration + service principal, with a
-   federated credential (`repo:<org>/<repo>:environment:production`,
-   issuer `https://token.actions.githubusercontent.com`) and a *Website
-   Contributor* role assignment scoped to the function app's resource
-   group (not broader - it doesn't need access to unrelated resources).
-2. In the GitHub repo: an environment named `production` (Settings ->
-   Environments), and repository variables `AZURE_CLIENT_ID`,
-   `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` set to that app
-   registration's values (Settings -> Secrets and variables -> Actions ->
-   Variables tab - these identify the app registration but aren't secrets
+   federated credential (`repo:<org>/<repo>:environment:<production or
+   staging>`, issuer `https://token.actions.githubusercontent.com`) and a
+   *Website Contributor* role assignment scoped to that Function App's
+   resource group only (not broader, and not shared between the two
+   environments' app registrations - staging's identity has no access to
+   the production resource group or vice versa).
+2. In the GitHub repo: an environment named `production` or `staging`
+   (Settings -> Environments), and repository variables `AZURE_CLIENT_ID`,
+   `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` - scoped to that environment,
+   not repository-wide, since the two environments use different app
+   registrations - set to that app registration's values (Settings ->
+   Secrets and variables -> Actions -> Variables tab, environment secrets
+   section - these identify the app registration but aren't secrets
    themselves, since OIDC needs no client secret).
 
 The manual steps below remain useful for a first-time deploy to a new

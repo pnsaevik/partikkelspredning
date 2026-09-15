@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-09-15
+
+### Added
+
+- Public job-submission form: a fixed parameter set (`resolution`,
+  `duration`) can now be rendered and deployed as a standalone,
+  publicly-readable HTML page in Azure Blob Storage, via
+  `scripts/deploy_public_form.py` (Azure-only for this iteration - no local
+  fallback). Adds a new `FormStore` port, `BlobFormStore` adapter (uploads
+  to a container created with public blob-level read access),
+  `domain.public_forms.PUBLIC_FORM_PARAMETERS`, and
+  `services.public_form_service.deploy_public_form`, plus the new
+  `PARTIKKEL_AZURE_FORMS_CONTAINER` setting (default `forms`). The
+  notification email is collected by the standard `user_email` field every
+  generated form already has, rather than a separate, redundant `email`
+  parameter (an early draft included one; dropped after testing the
+  deployed form on staging showed it duplicating that field). Unrelated to
+  the existing `POST /form` endpoint, which still renders any parameter set
+  on demand without deploying it anywhere.
+- A `staging` deployment target for trying out Azure-specific behavior
+  before merging: `deploy_staging.yml` runs on every push to a branch with
+  an open PR into `main` (and can also be triggered by hand for a branch
+  with no PR yet: `gh workflow run deploy_staging.yml --ref <branch>`),
+  deploying `api/` to a new, separate `partikkelspredning-api-staging`
+  Function App with its own resource group and storage account, so it can
+  never touch production data. `action_deploy.yml` now takes `app-name`/
+  `environment` inputs (defaulting to the existing production values, so
+  `deploy.yml` needed no changes) to let both workflows share the same
+  deploy logic. See `api/README.md`'s "Continuous integration and
+  deployment" section for the one-time OIDC/environment setup this needed.
+
 ## [0.1.8] - 2026-09-14
 
 ### Changed
