@@ -3,14 +3,25 @@ name: Deploy to staging
 # Deploys api/ to partikkelspredning-api-staging (in
 # partikkelspredning-staging-rg), a separate Function App with its own
 # storage account - nothing this touches can affect production data or the
-# partikkelspredning-api app. Unlike deploy.yml, this never runs
-# automatically (no tag push, no PR): it exists purely as an on-request
-# testbed for trying out a branch's Azure-specific behavior before
-# opening/merging its PR.
+# partikkelspredning-api app. Exists as a testbed for trying out a branch's
+# Azure-specific behavior before merging its PR - unlike deploy.yml, it
+# never runs on a tag push and never touches production.
 #
-# Run with: gh workflow run deploy_staging.yml --ref <branch>
+# Runs automatically on every push to a branch with an open PR into main
+# (pull_request's default `synchronize` event), and can also be triggered
+# by hand for a branch that has no PR yet:
+#   gh workflow run deploy_staging.yml --ref <branch>
+#
+# Note: a `pull_request`-triggered run uses the workflow file from the PR
+# branch itself, so - unlike workflow_dispatch, which GitHub only ever
+# discovers from the default branch - this trigger works before
+# deploy_staging.yml has been merged to main.
 
 on:
+  pull_request:
+    branches:
+      - "main"
+    types: [opened, synchronize, reopened]
   workflow_dispatch: {}
 
 permissions:

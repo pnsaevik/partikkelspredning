@@ -39,7 +39,7 @@ against the [Azurite emulator](https://learn.microsoft.com/azure/storage/common/
 
 ## Continuous integration and deployment (GitHub Actions)
 
-CI is split into three gates:
+CI is split into four gates:
 
 * **Every push**, any branch (`workflow_push.yml`): runs the test suite
   (`action_pytest.yml`), including `tests/test_function_app.py`'s direct
@@ -66,13 +66,18 @@ takes `app-name`/`environment` inputs, defaulting to `partikkelspredning-api`
 there. `deploy_staging.yml` calls the same reusable workflow with those
 inputs overridden to target a second, entirely separate Function App:
 
-* **On demand only** (`gh workflow run deploy_staging.yml --ref <branch>`;
-  never on push, PR, or tag): deploys `api/` to
-  `partikkelspredning-api-staging` (resource group
+* **Every push to a branch with an open PR into `main`** (`deploy_staging.yml`,
+  `pull_request`'s `synchronize` event - also runnable by hand for a branch
+  with no PR yet: `gh workflow run deploy_staging.yml --ref <branch>`):
+  deploys `api/` to `partikkelspredning-api-staging` (resource group
   `partikkelspredning-staging-rg`), which has its own storage account -
   nothing it does can affect `partikkelspredning-api`'s data. Meant as a
   testbed for trying out a branch's Azure-specific behavior (e.g. the
-  public form's Blob Storage upload) before opening or merging its PR.
+  public form's Blob Storage upload) before merging its PR. A
+  `pull_request`-triggered run uses the workflow file from the PR branch
+  itself, so this works even before `deploy_staging.yml` has been merged to
+  `main` - unlike `workflow_dispatch`, which GitHub only ever discovers
+  from the default branch.
 
 Both workflows authenticate to Azure via OIDC (a federated credential on an
 Azure AD app registration scoped to a specific GitHub *environment* -

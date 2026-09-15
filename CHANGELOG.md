@@ -21,9 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the existing `POST /form` endpoint, which still renders any parameter set
   on demand without deploying it anywhere.
 - A `staging` deployment target for trying out Azure-specific behavior
-  before merging: `deploy_staging.yml`, runnable only on demand
-  (`gh workflow run deploy_staging.yml --ref <branch>`, never on push/PR/tag),
-  deploys `api/` to a new, separate `partikkelspredning-api-staging`
+  before merging: `deploy_staging.yml` runs on every push to a branch with
+  an open PR into `main` (and can also be triggered by hand for a branch
+  with no PR yet: `gh workflow run deploy_staging.yml --ref <branch>`),
+  deploying `api/` to a new, separate `partikkelspredning-api-staging`
   Function App with its own resource group and storage account, so it can
   never touch production data. `action_deploy.yml` now takes `app-name`/
   `environment` inputs (defaulting to the existing production values, so
