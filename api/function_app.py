@@ -4,32 +4,32 @@ This module (together with everything under
 `partikkelspredning.adapters.azure`) is one of the only two places that
 import Azure SDKs - the other being `partikkelspredning.adapters.azure`
 itself. Each HTTP-triggered function below is a thin translation layer
-between `azure.functions.HttpRequest`/`HttpResponse` and `JobService` (the
-same service `partikkelspredning.api.routes_jobs`/`routes_form` call for
-local, uvicorn-hosted development) - no business logic lives here, and none
-of the request/response schemas or domain error handling are duplicated:
-they're imported from `partikkelspredning.api.schemas` and
-`partikkelspredning.domain.errors`.
+between `azure.functions.HttpRequest`/`HttpResponse` and `JobService`/the
+forms registry (the same services `partikkelspredning.api.routes_jobs`/
+`routes_index` call for the FastAPI app `tests/test_api.py` exercises) - no
+business logic lives here, and none of the request/response schemas or
+domain error handling are duplicated: they're imported from
+`partikkelspredning.api.schemas` and `partikkelspredning.domain.errors`.
 
-    local:  browser -> uvicorn -> FastAPI app (partikkelspredning.main:app)
-    Azure:  browser -> Azure Functions -> the functions below, calling
-                                           straight into JobService
+Azure Functions is the only real hosting target for this application (see
+FEATURE_PLAN.md's "multiple_forms" AC6) - the FastAPI app
+(`partikkelspredning.api.app`) still exists, but only for
+`tests/test_api.py` to exercise directly via `TestClient`.
 
 New endpoints are added here as a new `@app.route(...)`-decorated function
 (mirroring the equivalent FastAPI route in `partikkelspredning.api`), not by
 changing how the app is hosted - there is no ASGI layer to keep in sync.
 
 Each route delegates to a plain `_verb_noun(req, ...)` function that takes
-its dependencies (a `JobService`, `Settings`, ...) as arguments rather than
-reaching for module state directly, so those functions can be unit-tested
-by calling them with a hand-built `func.HttpRequest` and a `JobService`
-wired to fakes or a tmp-dir-backed local deployment - see
-`tests/test_function_app.py`.
+its dependencies (a `JobService`, `Settings`, pre-rendered forms data, ...)
+as arguments rather than reaching for module state directly, so those
+functions can be unit-tested by calling them with a hand-built
+`func.HttpRequest` and fakes - see `tests/test_function_app.py`.
 """
 from __future__ import annotations
 
 import json
-from typing import Any, Optional, Type, TypeVar
+from typing import Any, Dict, List, Optional, Type, TypeVar
 
 import azure.functions as func
 from pydantic import BaseModel, ValidationError
@@ -44,14 +44,16 @@ from partikkelspredning.api.schemas import (
     SubmitJobRequest,
 )
 from partikkelspredning.api.security import require_worker_auth
-from partikkelspredning.composition import build_job_service
+from partikkelspredning.composition import build_forms_store, build_job_service
 from partikkelspredning.config import Settings, get_settings
 from partikkelspredning.domain.errors import (
     InvalidTransitionError,
     JobNotFoundError,
     JobOwnershipError,
 )
-from partikkelspredning.services.form_renderer import generate_form_html
+from partikkelspredning.domain.forms import Form
+from partikkelspredning.services.form_registry import load_forms
+from partikkelspredning.services.form_renderer import generate_form_html, prerender_and_store, render_index_html
 from partikkelspredning.services.job_service import JobService
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -62,12 +64,16 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 # --- process-wide dependencies -----------------------------------------
 #
 # Built lazily on first use and cached for the lifetime of the worker
-# process, the same way `partikkelspredning.main` builds its FastAPI `app`
-# once at import time - `PARTIKKEL_STORAGE_MODE` and the rest of the
-# environment don't change between invocations of a warm worker.
+# process ("startup" here means "first invocation of a warm worker", not
+# literal process start - Azure Functions has no FastAPI-style startup
+# hook) - `PARTIKKEL_STORAGE_MODE` and the rest of the environment don't
+# change between invocations of a warm worker.
 
 _settings: Optional[Settings] = None
 _job_service: Optional[JobService] = None
+_forms: Optional[List[Form]] = None
+_form_urls: Optional[Dict[str, str]] = None
+_index_html: Optional[str] = None
 
 
 def _get_settings() -> Settings:
@@ -82,6 +88,28 @@ def _get_job_service() -> JobService:
     if _job_service is None:
         _job_service = build_job_service(_get_settings())
     return _job_service
+
+
+def _get_forms() -> List[Form]:
+    global _forms
+    if _forms is None:
+        _forms = load_forms()
+    return _forms
+
+
+def _get_form_urls() -> Dict[str, str]:
+    global _form_urls
+    if _form_urls is None:
+        forms_store = build_forms_store(_get_settings())
+        _form_urls = prerender_and_store(_get_forms(), forms_store, api_base_url=_get_settings().api_base_url)
+    return _form_urls
+
+
+def _get_index_html() -> str:
+    global _index_html
+    if _index_html is None:
+        _index_html = render_index_html(_get_forms(), _get_form_urls())
+    return _index_html
 
 
 # --- request/response helpers -------------------------------------------
@@ -222,6 +250,30 @@ def _health(req: func.HttpRequest) -> func.HttpResponse:
     return _json_response({"status": "ok"})
 
 
+def _index(req: func.HttpRequest, index_html: str) -> func.HttpResponse:
+    """Landing page linking to every pre-rendered form - see
+    `partikkelspredning.api.routes_index`'s equivalent FastAPI route."""
+    return func.HttpResponse(body=index_html, status_code=200, mimetype="text/html")
+
+
+def _forms_metadata(req: func.HttpRequest, forms: List[Form], form_urls: Dict[str, str]) -> func.HttpResponse:
+    """Forms registry metadata for programmatic access - see
+    `partikkelspredning.api.routes_index`'s equivalent FastAPI route."""
+    payload = {
+        "forms": [
+            {
+                "id": form.id,
+                "name": form.name,
+                "description": form.description,
+                "parameters": [p.model_dump(mode="json") for p in form.parameters],
+                "url": form_urls[form.id],
+            }
+            for form in forms
+        ]
+    }
+    return _json_response(payload)
+
+
 # --- Azure Functions triggers ---------------------------------------------
 
 
@@ -258,3 +310,13 @@ def generate_form(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="health", methods=["GET"])
 def health(req: func.HttpRequest) -> func.HttpResponse:
     return _health(req)
+
+
+@app.route(route="", methods=["GET"])
+def index(req: func.HttpRequest) -> func.HttpResponse:
+    return _index(req, _get_index_html())
+
+
+@app.route(route="forms", methods=["GET"])
+def forms_metadata(req: func.HttpRequest) -> func.HttpResponse:
+    return _forms_metadata(req, _get_forms(), _get_form_urls())

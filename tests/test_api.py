@@ -23,7 +23,8 @@ from partikkelspredning.api.app import create_app
 @pytest.fixture
 def client(settings, job_service):
     app = create_app(settings=settings, job_service=job_service)
-    return TestClient(app)
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 def _valid_payload():
@@ -113,3 +114,22 @@ def test_generate_form_returns_html(client):
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert 'name="resolution"' in response.text
+
+
+def test_index_returns_html_linking_to_pre_rendered_forms(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Standard Resolution Simulation" in response.text
+
+
+def test_forms_metadata_returns_json_with_parameters_and_urls(client):
+    response = client.get("/forms")
+    assert response.status_code == 200
+    body = response.json()
+    ids = [form["id"] for form in body["forms"]]
+    assert "standard_resolution" in ids
+    standard = next(form for form in body["forms"] if form["id"] == "standard_resolution")
+    assert standard["name"]
+    assert any(p["name"] == "resolution" for p in standard["parameters"])
+    assert standard["url"]

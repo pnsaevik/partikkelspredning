@@ -55,4 +55,9 @@ filterwarnings = [
     # dependencies, so it's ignored narrowly by message rather than pinning
     # an anyio/starlette version just to silence it.
     "ignore:The anyio.abc.BlockingPortal alias is deprecated.*:DeprecationWarning",
+    # api/app.py deliberately keeps FastAPI's `@app.on_event("startup")`
+    # rather than a lifespan context manager - a small, self-contained app
+    # with one startup hook (forms pre-rendering), not worth the larger
+    # rewrite a lifespan handler would need for no behavior change.
+    "ignore:(?s).*on_event is deprecated.*:DeprecationWarning",
 ]

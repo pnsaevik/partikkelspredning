@@ -20,11 +20,14 @@ from function_app import (
     _claim_job,
     _complete_job,
     _fail_job,
+    _forms_metadata,
     _generate_form,
     _get_job,
     _health,
+    _index,
     _submit_job,
 )
+from partikkelspredning.domain.forms import Form
 
 
 def _request(method: str, url: str, *, json_body=None, route_params=None) -> func.HttpRequest:
@@ -162,3 +165,23 @@ def test_health_returns_ok():
     response = _health(_request("GET", "/health"))
     assert response.status_code == 200
     assert json.loads(response.get_body()) == {"status": "ok"}
+
+
+def test_index_returns_the_precomputed_html():
+    response = _index(_request("GET", "/"), "<html>hello</html>")
+    assert response.status_code == 200
+    assert "text/html" in response.mimetype
+    assert response.get_body().decode() == "<html>hello</html>"
+
+
+def test_forms_metadata_returns_json_with_parameters_and_urls():
+    forms = [Form(id="a", name="Form A", description="First form", parameters=[])]
+    form_urls = {"a": "https://example.com/forms/a.html"}
+
+    response = _forms_metadata(_request("GET", "/forms"), forms, form_urls)
+
+    assert response.status_code == 200
+    body = json.loads(response.get_body())
+    assert body["forms"] == [
+        {"id": "a", "name": "Form A", "description": "First form", "parameters": [], "url": "https://example.com/forms/a.html"}
+    ]
