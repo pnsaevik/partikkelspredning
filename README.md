@@ -297,6 +297,12 @@ pip install -e ".[azure]"
 AZURE_STORAGE_CONNECTION_STRING="..." pytest -m azure_integration
 ```
 
+They also run automatically, against the real staging storage account,
+after every successful deploy to staging (`deploy_staging.yml`'s
+`azure_integration` job) - see `api/README.md`'s "Continuous integration
+and deployment" section for the one-time secret setup this needs. The
+default `pytest` run (including `workflow_push.yml`) always skips them.
+
 ## Azure deployment
 
 See [`api/README.md`](api/README.md) for how `api/function_app.py`'s

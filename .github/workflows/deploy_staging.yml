@@ -16,6 +16,15 @@ name: Deploy to staging
 # branch itself, so - unlike workflow_dispatch, which GitHub only ever
 # discovers from the default branch - this trigger works before
 # deploy_staging.yml has been merged to main.
+#
+# After a successful deploy, the `azure_integration` job runs the
+# tests/azure_integration/ suite (skipped by default everywhere else, incl.
+# workflow_push.yml - see pyproject.toml's addopts) against the real
+# partikkelspredning-api-staging storage account, using the
+# `staging`-environment secret `AZURE_STORAGE_CONNECTION_STRING` (one-time
+# setup: see api/README.md's "Continuous integration and deployment"
+# section). This never runs against production - only ever this staging
+# storage account.
 
 on:
   pull_request:
@@ -43,3 +52,28 @@ jobs:
     with:
       app-name: partikkelspredning-api-staging
       environment: staging
+
+  azure_integration:
+    name: Azure integration tests
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - run: pip install -e ".[dev,azure]"
+
+      - name: Run azure_integration tests against the staging storage account
+        # Skipped automatically (not failed) if the AZURE_STORAGE_CONNECTION_STRING
+        # environment secret hasn't been configured on the `staging`
+        # GitHub environment yet - see tests/azure_integration/test_azure_adapters.py's
+        # own skipif.
+        run: pytest -m azure_integration
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}

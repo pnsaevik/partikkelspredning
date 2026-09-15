@@ -84,7 +84,11 @@ inputs overridden to target a second, entirely separate Function App:
   `pull_request`-triggered run uses the workflow file from the PR branch
   itself, so this works even before `deploy_staging.yml` has been merged to
   `main` - unlike `workflow_dispatch`, which GitHub only ever discovers
-  from the default branch.
+  from the default branch. After a successful deploy, its `azure_integration`
+  job runs `tests/azure_integration/` (see the root README's "Optional
+  Azure integration tests" section) against the real staging storage
+  account - this is the *only* place those tests run automatically; the
+  default `pytest` run (`workflow_push.yml` included) always skips them.
 
 Both workflows authenticate to Azure via OIDC (a federated credential on an
 Azure AD app registration scoped to a specific GitHub *environment* -
@@ -107,6 +111,18 @@ setup for a new deployment target, already done for both
    Secrets and variables -> Actions -> Variables tab, environment secrets
    section - these identify the app registration but aren't secrets
    themselves, since OIDC needs no client secret).
+3. `staging` only, for the `azure_integration` job above: an
+   `AZURE_STORAGE_CONNECTION_STRING` *secret* (not variable - this one is
+   an actual secret, unlike the OIDC identifiers above) on the `staging`
+   environment, set to the same connection string already configured as
+   the `partikkelspredning-api-staging` Function App's own
+   `AZURE_STORAGE_CONNECTION_STRING` app setting (see "Deploy to Azure"
+   below). Set it from a local shell, never pasted into a chat or commit:
+   `gh secret set AZURE_STORAGE_CONNECTION_STRING --env staging` (prompts
+   for the value). Left unset, the `azure_integration` job's tests just
+   skip (see `tests/azure_integration/test_azure_adapters.py`'s own
+   `skipif`) rather than fail - so this step is optional, not required for
+   deploys or the rest of CI to work.
 
 The manual steps below remain useful for a first-time deploy to a new
 Function App, or for deploying from a local checkout without waiting on CI.

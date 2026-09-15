@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PARTIKKEL_AZURE_FORMS_CONTAINER`. Separate from - and unrelated to -
   `build_form_store`, which still deploys only the pre-existing single
   public job-submission form and is unchanged.
+- `deploy_staging.yml`'s new `azure_integration` job: after each staging
+  deploy, runs the pre-existing (opt-in, previously CI-untested)
+  `tests/azure_integration/` suite against the real
+  `partikkelspredning-api-staging` storage account, using a new
+  `staging`-environment secret `AZURE_STORAGE_CONNECTION_STRING` (one-time
+  setup, see `api/README.md`). Skips gracefully if that secret isn't set.
+  The default `pytest` run (`workflow_push.yml` included) still always
+  skips `azure_integration`-marked tests, unchanged.
 
 ### Removed
 
