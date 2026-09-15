@@ -39,10 +39,15 @@ def job_service(repository, queue, result_store, notifier):
 
 
 @pytest.fixture
-def local_settings(tmp_path):
-    """Settings for a real, tmp-dir-backed local deployment (CSV files etc.)."""
+def settings(tmp_path):
+    """`Settings` for tests: local forms storage (a scratch tmp dir), no Azure
+    credentials - job storage always requires Azure now (see
+    `partikkelspredning.composition.build_job_service`), so HTTP-layer tests
+    inject a fakes-backed `JobService` directly instead of going through the
+    composition root (see `job_service` above and its use in
+    `tests/test_api.py`/`tests/test_function_app.py`)."""
     return Settings(
         storage_mode="local",
         api_base_url="http://testserver",
-        local_data_dir=tmp_path / "data",
+        forms_local_dir=tmp_path / "forms",
     )

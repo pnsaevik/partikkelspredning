@@ -15,17 +15,20 @@ object — there is no predefined parameter schema this backend validates
 against — and queues the job. A future compute server (not implemented in
 this repo) will claim queued jobs, decide whether a given job's parameters
 are actually runnable, run the simulation, and report completion/failure
-back. `POST /form` is a separate, unrelated convenience: it generates a
-static HTML form for one specific parameter set (e.g.
-resolution/duration/experiment) — not deployed by this repo, and its shape
-has no bearing on what `POST /jobs` accepts. First deployment target is
-Azure, but business logic never imports an Azure SDK.
+back. `GET /` and `GET /forms` serve a small registry of named,
+pre-configured forms (`src/partikkelspredning/forms/definitions.json`),
+pre-rendered at startup — a form's shape has no bearing on what `POST
+/jobs` accepts. First deployment target is Azure, but business logic never
+imports an Azure SDK. Azure Functions is the only real hosting target —
+there is no local, uvicorn-hosted deployment any more; job storage
+(repository, queue, result store, notifications) is always Azure, with no
+local fallback.
 
 ## Commands
 
 ```bash
-# install (editable, with dev + local extras)
-pip install -e ".[dev,local]"
+# install (editable, with dev extras)
+pip install -e ".[dev]"
 
 # run the full test suite
 pytest
@@ -34,10 +37,16 @@ pytest
 pytest tests/test_job_service.py
 pytest tests/test_job_service.py::test_name
 
-# run the app locally
-uvicorn partikkelspredning.main:app --reload
-# -> interactive docs at http://localhost:8000/docs
+# run the app locally (requires a real/Azurite Azure Storage account —
+# job storage has no local mode; see api/README.md)
+cd api && func start
 ```
+
+The default `pytest` run needs no Azure credentials: job-storage-dependent
+tests inject a fakes-backed `JobService` (`tests/fakes.py`) instead of the
+real composition root, and the forms registry is exercised against a local
+filesystem `FormStore`. Real Azure adapter behavior is covered only by the
+`azure_integration`-marked tests below.
 
 Optional Azure integration tests (`tests/azure_integration/`, marked
 `azure_integration`) are excluded by default via `addopts` in
@@ -54,12 +63,12 @@ AZURE_STORAGE_CONNECTION_STRING="..." pytest -m azure_integration
 
 ```
 api/ (FastAPI routes, schemas, DI)
-  -> services/ (JobService, form_service)
-       -> domain/ (SimulationJob, JobStatus, parameters)
-       -> ports/  (Protocols: JobRepository, JobQueue, ResultStore, NotificationService)
+  -> services/ (JobService, form_registry, form_renderer)
+       -> domain/ (SimulationJob, JobStatus, parameters, forms)
+       -> ports/  (Protocols: JobRepository, JobQueue, ResultStore, NotificationService, FormStore)
                        implemented by:
-                       adapters/local/ (CSV files, disk, console logging - no cloud creds)
-                       adapters/azure/ (Table Storage, Storage Queue, Blob Storage)
+                       adapters/local/ (FormStore only, filesystem - no cloud creds)
+                       adapters/azure/ (Table Storage, Storage Queue, Blob Storage, incl. FormStore)
 ```
 
 Import rules, enforced by convention (not tooling) — do not violate them:
@@ -69,25 +78,30 @@ Import rules, enforced by convention (not tooling) — do not violate them:
 | Domain | `src/partikkelspredning/domain/` | pydantic only |
 | Services | `src/partikkelspredning/services/` | domain, ports |
 | Ports | `src/partikkelspredning/ports/` | domain (typing only) |
-| Local adapters | `src/partikkelspredning/adapters/local/` | domain, ports, pandas |
+| Local adapters | `src/partikkelspredning/adapters/local/` | domain, ports |
 | Azure adapters | `src/partikkelspredning/adapters/azure/` | domain, ports, `azure.*` |
 | API | `src/partikkelspredning/api/` | everything above, FastAPI |
 | Azure Functions | `api/function_app.py` | `partikkelspredning`, `azure.functions` |
 
 `domain/`, `services/`, and `ports/` must never import `azure`,
-`azure-functions`, `pandas`, or `fastapi`. `partikkelspredning.composition`
-is the sole composition root: it picks concrete adapters based on
-`PARTIKKEL_STORAGE_MODE` (`local`/`azure`) and wires them into a
-`JobService` — nothing above it should know which adapters were chosen.
+`azure-functions`, or `fastapi`. `partikkelspredning.composition` is the
+sole composition root: `build_job_service` always builds the real Azure
+adapters (job storage has no local mode); `build_forms_store` picks
+between a local filesystem `FormStore` and an Azure Blob Storage one based
+on `PARTIKKEL_STORAGE_MODE` (`local`/`azure`) for the forms registry —
+nothing above either function should know which adapters were chosen.
 
 Both hosting modes call into the *same* `services`/`domain`/`ports` layer,
 never a reimplementation of the business logic — only the HTTP transport
-differs:
+differs. Azure Functions is the only real deployment target; the FastAPI
+app (`partikkelspredning.api.app`) exists solely so `tests/test_api.py` can
+exercise the same routes via `TestClient` — there is no uvicorn-hosted
+local deployment:
 
 ```
-local:  browser -> uvicorn -> FastAPI app (partikkelspredning.main:app)
-Azure:  browser -> Azure Functions -> HTTP-triggered functions (api/function_app.py),
-                                       each a thin wrapper around the same JobService
+FastAPI app (tests/test_api.py's TestClient only) and
+Azure Functions (api/function_app.py, the real deployment target) both
+call straight into the same JobService / forms-registry services.
 ```
 
 `api/` at the repo root is a thin Azure Functions adapter folder (separate
@@ -126,26 +140,27 @@ actually runnable is for the (not-yet-implemented) compute server to decide
 once it claims it, not this API. `partikkelspredning.domain.parameters
 .ParameterDefinition` (`name`, `type`, `description`; only `integer`,
 `float`, `text` supported) exists solely to describe the fields of one
-generated form — `POST /form` takes a list of these directly in its request
-body and renders a standalone HTML page for that specific parameter set. It
-is a static-site-generator convenience, not deployed by this repo, and
-unrelated to what `POST /jobs` will accept.
+generated form. `partikkelspredning.domain.forms.Form` pairs a list of
+these with an id/name/description — one entry in the forms registry
+(`src/partikkelspredning/forms/definitions.json`, loaded by
+`services.form_registry.load_forms`, rendered and pre-served via `GET /`/
+`GET /forms` — see "What this is" above). Unrelated to what `POST /jobs`
+will accept.
 
 ## Configuration
 
 All configuration is via environment variables
 (`src/partikkelspredning/config.py`) — no resource names or credentials are
 hard-coded. Key ones: `PARTIKKEL_STORAGE_MODE` (`local`/`azure`, default
-`local`), `PARTIKKEL_LOCAL_DATA_DIR` (default `./data`),
-`AZURE_STORAGE_CONNECTION_STRING` (required in azure mode). Full table in
-the root README.
+`local` — selects **forms** storage only), `PARTIKKEL_FORMS_LOCAL_DIR`
+(default `./data/forms`), `AZURE_STORAGE_CONNECTION_STRING` (**always**
+required — job storage has no local mode). Full table in the root README.
 
-`local` mode storage: `adapters/local` keeps job metadata in
-`PARTIKKEL_LOCAL_DATA_DIR/jobs.csv` (pandas), the queue as one job id per
-line in `queue.txt`, results under `results/`, and logs notifications to the
-console. Both CSV files are guarded by an `fcntl`-based exclusive lock
-around each read-modify-write — intentionally simple, not a production
-database (that's what `adapters/azure/` is for).
+`local` mode (forms storage only): `adapters/local/form_store.py`'s
+`LocalFormStore` writes each pre-rendered form to
+`PARTIKKEL_FORMS_LOCAL_DIR/{form_id}.html`. Job storage (metadata, queue,
+results, notifications) has no local adapter any more — it is always the
+real Azure adapters in `adapters/azure/`.
 
 ## Security posture (prototype, deliberately minimal)
 
@@ -235,7 +250,7 @@ Before signaling completion:
 5. **Update changelog:**
    - Add entry under `[Unreleased]` section of `CHANGELOG.md` describing the new feature
 6. **Verify feature in staging environment** (if available):
-   - Run with `PARTIKKEL_STORAGE_MODE=local` against a scratch `PARTIKKEL_LOCAL_DATA_DIR` as the local "staging" equivalent; for Azure-adapter changes, use Azurite or a real storage account per "Commands" above
+   - Run with `PARTIKKEL_STORAGE_MODE=local` against a scratch `PARTIKKEL_FORMS_LOCAL_DIR` as the local "staging" equivalent for forms-registry changes (inject a fakes-backed `JobService` into `create_app`, same as the tests, since job storage has no local mode); for job-storage/Azure-adapter changes, use Azurite or a real storage account per "Commands" above
    - Run all scripted tests including E2E
    - Staging should be empty/clean before testing
 7. **Review changes for compliance:**
@@ -424,7 +439,7 @@ wherever the two disagree. The actual points of disagreement found:
 1. **Package manager.** The general guide defaults to conda. This repo has
    no `environment.yml` or conda config anywhere — dependencies and extras
    are declared entirely in `pyproject.toml` and installed with
-   `pip install -e ".[dev,local]"` (see "Commands"). Resolution: conda is
+   `pip install -e ".[dev]"` (see "Commands"). Resolution: conda is
    not used for this project; treat the "Language & Dependencies" bullet
    above as overridden by `pyproject.toml`/pip.
 2. **In-place mutation vs. the domain state machine.** The general guide's

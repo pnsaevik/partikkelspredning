@@ -4,10 +4,13 @@ This folder is a thin Azure Functions **adapter**: it is one of only two
 places (besides [`../src/partikkelspredning/adapters/azure/`](../src/partikkelspredning/adapters/azure))
 that import Azure SDKs. `function_app.py` declares one HTTP-triggered Azure
 Function per endpoint; each is a thin wrapper that translates between
-`azure.functions.HttpRequest`/`HttpResponse` and `JobService` - the same
-service class `partikkelspredning.api.routes_jobs`/`routes_form` call for
-local, uvicorn-hosted development (see `function_app.py`'s module
-docstring). See [the root README](../README.md) for the full architecture.
+`azure.functions.HttpRequest`/`HttpResponse` and `JobService`/the forms
+registry - the same services `partikkelspredning.api.routes_jobs`/
+`routes_index` call for the FastAPI app that `tests/test_api.py` exercises
+directly (see `function_app.py`'s module docstring). Azure Functions is the
+only real hosting target for this application - there is no local,
+uvicorn-hosted deployment any more. See [the root README](../README.md) for
+the full architecture.
 
 ## Run locally
 
@@ -23,19 +26,23 @@ pip install -e ..   # partikkelspredning itself, editable - see "How packaging w
 func start
 ```
 
-The same endpoints as running `uvicorn` directly are then available at
-`http://localhost:7071` (see the root README) - `host.json` sets
-`extensions.http.routePrefix` to `""` (no `/api` prefix) so the routes match
-exactly, including `GET /health` (a liveness check with no equivalent in
-the FastAPI app, used by the deploy workflow's smoke test below).
+The same endpoints are available at `http://localhost:7071` (see the root
+README) - `host.json` sets `extensions.http.routePrefix` to `""` (no `/api`
+prefix) so the routes match exactly, including `GET /health` (a liveness
+check with no equivalent in the FastAPI app, used by the deploy workflow's
+smoke test below).
 
-`local.settings.json` defaults `PARTIKKEL_STORAGE_MODE` to `local`, so
-`func start` works with no Azure Storage account for the *application's
-own* data - CSV files are written under `PARTIKKEL_LOCAL_DATA_DIR`. Note
-that `AzureWebJobsStorage` (required by the Functions *host* itself, not by
-our code) is left blank here; a real deployment needs it set, either to a
-real storage account connection string or `UseDevelopmentStorage=true`
-against the [Azurite emulator](https://learn.microsoft.com/azure/storage/common/storage-use-azurite).
+Job storage is always Azure - there is no local fallback - so `func start`
+needs a real `AZURE_STORAGE_CONNECTION_STRING` set in `local.settings.json`
+even for local development (a real storage account, or the
+[Azurite emulator](https://learn.microsoft.com/azure/storage/common/storage-use-azurite)
+with `UseDevelopmentStorage=true`). `local.settings.json` defaults
+`PARTIKKEL_STORAGE_MODE` to `local`, which only affects *forms* storage:
+pre-rendered forms are written under `PARTIKKEL_FORMS_LOCAL_DIR` instead of
+Azure Blob Storage, so trying out the forms registry (`GET /`, `GET
+/forms`) needs no separate container. Note that `AzureWebJobsStorage`
+(required by the Functions *host* itself, not by our code) is left blank
+in the checked-in template; a real deployment needs it set the same way.
 
 ## Continuous integration and deployment (GitHub Actions)
 
@@ -77,7 +84,11 @@ inputs overridden to target a second, entirely separate Function App:
   `pull_request`-triggered run uses the workflow file from the PR branch
   itself, so this works even before `deploy_staging.yml` has been merged to
   `main` - unlike `workflow_dispatch`, which GitHub only ever discovers
-  from the default branch.
+  from the default branch. After a successful deploy, its `azure_integration`
+  job runs `tests/azure_integration/` (see the root README's "Optional
+  Azure integration tests" section) against the real staging storage
+  account - this is the *only* place those tests run automatically; the
+  default `pytest` run (`workflow_push.yml` included) always skips them.
 
 Both workflows authenticate to Azure via OIDC (a federated credential on an
 Azure AD app registration scoped to a specific GitHub *environment* -
@@ -100,6 +111,18 @@ setup for a new deployment target, already done for both
    Secrets and variables -> Actions -> Variables tab, environment secrets
    section - these identify the app registration but aren't secrets
    themselves, since OIDC needs no client secret).
+3. `staging` only, for the `azure_integration` job above: an
+   `AZURE_STORAGE_CONNECTION_STRING` *secret* (not variable - this one is
+   an actual secret, unlike the OIDC identifiers above) on the `staging`
+   environment, set to the same connection string already configured as
+   the `partikkelspredning-api-staging` Function App's own
+   `AZURE_STORAGE_CONNECTION_STRING` app setting (see "Deploy to Azure"
+   below). Set it from a local shell, never pasted into a chat or commit:
+   `gh secret set AZURE_STORAGE_CONNECTION_STRING --env staging` (prompts
+   for the value). Left unset, the `azure_integration` job's tests just
+   skip (see `tests/azure_integration/test_azure_adapters.py`'s own
+   `skipif`) rather than fail - so this step is optional, not required for
+   deploys or the rest of CI to work.
 
 The manual steps below remain useful for a first-time deploy to a new
 Function App, or for deploying from a local checkout without waiting on CI.
@@ -119,7 +142,12 @@ az functionapp create --resource-group <resource-group> --consumption-plan-locat
 # AzureWebJobsStorage, which the Functions host manages itself)
 az functionapp config appsettings set --name <function-app-name> --resource-group <resource-group> \
   --settings PARTIKKEL_STORAGE_MODE=azure AZURE_STORAGE_CONNECTION_STRING="<connection-string>" \
-             PARTIKKEL_API_BASE_URL="https://<function-app-name>.azurewebsites.net"
+             PARTIKKEL_API_BASE_URL="https://<function-app-name>.azurewebsites.net" \
+             AzureWebJobsDisableHomepage=true
+# ^ without this, Azure intercepts bare `GET /` with its own generic
+# placeholder page before it ever reaches the forms registry's index route
+# - action_deploy.yml sets this automatically on every CI-driven deploy, so
+# this manual step only matters for a first deploy done outside CI.
 
 # deploy this folder's code - must be pushed to GitHub first (see below)
 cd api

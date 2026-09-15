@@ -1,7 +1,9 @@
-"""Local adapters: CSV files, the filesystem, and the console.
+"""Local adapters: only a filesystem `FormStore`, for the forms registry.
 
-Used for local development and the default test suite. None of these
-require any cloud credentials. They are intentionally simple - see each
-module's docstring - and are not meant to become a production persistence
-layer; that's what `partikkelspredning.adapters.azure` is for.
+Job storage (repository, queue, result store, notifications) has no local
+adapter any more - it is always Azure (see
+`partikkelspredning.composition.build_job_service`). `form_store.py`'s
+`LocalFormStore` requires no cloud credentials and is used for local
+development and the default test suite's coverage of the multiple-forms
+registry (`partikkelspredning.composition.build_forms_store`).
 """

@@ -1,8 +1,16 @@
 """A small number of FastAPI endpoint tests.
 
-Uses the real local (CSV-backed) adapters via `local_settings` (see
-conftest.py) rather than fakes, so these also exercise the composition root
-end to end - not just the service layer.
+Job storage is always Azure now (see
+`partikkelspredning.composition.build_job_service`), so these tests inject
+a fakes-backed `JobService` (see `tests/fakes.py`/`conftest.py`) via
+`create_app(job_service=...)` rather than exercising the real composition
+root end to end - that coverage now lives solely in
+`tests/azure_integration/` (excluded by default; requires real/emulated
+Azure Storage). These tests exercise HTTP routing/schema behavior against
+the same business logic `tests/test_job_service.py` already covers
+directly. Forms-registry startup pre-rendering still uses a real
+`LocalFormStore` (see `settings` in conftest.py), since that has no Azure
+dependency.
 """
 from __future__ import annotations
 
@@ -13,9 +21,10 @@ from partikkelspredning.api.app import create_app
 
 
 @pytest.fixture
-def client(local_settings):
-    app = create_app(settings=local_settings)
-    return TestClient(app)
+def client(settings, job_service):
+    app = create_app(settings=settings, job_service=job_service)
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 def _valid_payload():
@@ -97,11 +106,20 @@ def test_complete_without_claiming_is_a_conflict(client):
     assert response.status_code == 409
 
 
-def test_generate_form_returns_html(client):
-    response = client.post(
-        "/form",
-        json={"parameters": [{"name": "resolution", "type": "integer", "description": "Grid resolution"}]},
-    )
+def test_index_returns_html_linking_to_pre_rendered_forms(client):
+    response = client.get("/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert 'name="resolution"' in response.text
+    assert "Standard Resolution Simulation" in response.text
+
+
+def test_forms_metadata_returns_json_with_parameters_and_urls(client):
+    response = client.get("/forms")
+    assert response.status_code == 200
+    body = response.json()
+    ids = [form["id"] for form in body["forms"]]
+    assert "standard_resolution" in ids
+    standard = next(form for form in body["forms"] if form["id"] == "standard_resolution")
+    assert standard["name"]
+    assert any(p["name"] == "resolution" for p in standard["parameters"])
+    assert standard["url"]

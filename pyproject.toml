@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "partikkelspredning"
-version = "0.1.9"
+version = "0.1.10"
 description = "Partikkelspredning"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -12,7 +12,6 @@ dependencies = [
     "fastapi>=0.110",
     "pydantic>=2",
     "email-validator",
-    "pandas",
 ]
 
 [project.optional-dependencies]
@@ -25,14 +24,17 @@ dev = [
     # extra's Table/Queue/Blob SDKs - see tests/azure_integration/).
     "azure-functions",
 ]
-local = ["uvicorn[standard]"]
-# Only needed when PARTIKKEL_STORAGE_MODE=azure is actually used (see
-# src/partikkelspredning/composition.py) - not required for local
-# development or the default test suite.
+# Needed to actually run job storage for real (it's always Azure - see
+# src/partikkelspredning/composition.py) or to select Azure-backed forms
+# storage - not required for the default test suite, which uses
+# tests/fakes.py and adapters/local/form_store.py instead.
 azure = ["azure-functions", "azure-data-tables", "azure-storage-queue", "azure-storage-blob"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"partikkelspredning.forms" = ["definitions.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -53,4 +55,9 @@ filterwarnings = [
     # dependencies, so it's ignored narrowly by message rather than pinning
     # an anyio/starlette version just to silence it.
     "ignore:The anyio.abc.BlockingPortal alias is deprecated.*:DeprecationWarning",
+    # api/app.py deliberately keeps FastAPI's `@app.on_event("startup")`
+    # rather than a lifespan context manager - a small, self-contained app
+    # with one startup hook (forms pre-rendering), not worth the larger
+    # rewrite a lifespan handler would need for no behavior change.
+    "ignore:(?s).*on_event is deprecated.*:DeprecationWarning",
 ]

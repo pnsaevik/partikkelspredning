@@ -5,6 +5,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-09-15
+
+### Added
+
+- Multiple forms registry: `src/partikkelspredning/forms/definitions.json`
+  lists named, pre-configured forms (id, name, description, parameters -
+  `domain.forms.Form`), loaded and validated at startup by
+  `services.form_registry.load_forms` (fail-fast on a malformed file,
+  missing fields, or duplicate ids). Each form is rendered and uploaded via
+  a `FormStore` once, at startup (`services.form_renderer
+  .prerender_and_store`), rather than generated per request. `GET /`
+  serves a pre-rendered landing page linking to every form; `GET /forms`
+  serves the same data as JSON (id, name, description, parameters, url)
+  for programmatic access. Both are implemented identically in the FastAPI
+  app (`api.routes_index`, used only by `tests/test_api.py`) and in
+  `api/function_app.py`'s Azure Functions handlers.
+- `composition.build_forms_store` and `adapters/local/form_store.py`'s
+  `LocalFormStore`: the forms registry's `FormStore` is selected by
+  `PARTIKKEL_STORAGE_MODE` - `local` (default) writes pre-rendered HTML to
+  `PARTIKKEL_FORMS_LOCAL_DIR` (new setting, default `./data/forms`) with no
+  cloud credentials needed; `azure` reuses the existing `BlobFormStore`/
+  `PARTIKKEL_AZURE_FORMS_CONTAINER`. Separate from - and unrelated to -
+  `build_form_store`, which still deploys only the pre-existing single
+  public job-submission form and is unchanged.
+- `deploy_staging.yml`'s new `azure_integration` job: after each staging
+  deploy, runs the pre-existing (opt-in, previously CI-untested)
+  `tests/azure_integration/` suite against the real
+  `partikkelspredning-api-staging` storage account, using a new
+  `staging`-environment secret `AZURE_STORAGE_CONNECTION_STRING` (one-time
+  setup, see `api/README.md`). Skips gracefully if that secret isn't set.
+  The default `pytest` run (`workflow_push.yml` included) still always
+  skips `azure_integration`-marked tests, unchanged.
+
+### Fixed
+
+- `GET /` (the forms registry's landing page) never actually reached
+  `function_app.py`'s `index` function when deployed - found by manually
+  testing the deployed staging app. Two things were both required, neither
+  sufficient alone: `AzureWebJobsDisableHomepage=true` as an app setting
+  (`action_deploy.yml` now sets it automatically on every deploy - new
+  `resource-group` input, defaulting to `partikkelspredning-rg`;
+  `deploy_staging.yml` passes `partikkelspredning-staging-rg`), *and* the
+  function's own route changed from `""` to `"/"` - with only the app
+  setting, Azure returned a bare `204` for `GET /` instead of routing to
+  the function; with neither, it silently served Azure's generic "Your
+  Azure Function App is up and running." placeholder instead. A new
+  smoke-test step in `action_deploy.yml` now verifies `GET /` actually
+  serves the index page on every deploy (not just `/health`, which
+  wouldn't have caught this).
+
+### Removed
+
+- **Local job storage and the local, uvicorn-hosted deployment mode.**
+  `adapters/local/csv_repository.py`, `csv_queue.py`,
+  `filesystem_result_store.py`, `console_notifications.py`, and
+  `src/partikkelspredning/main.py` are gone; `pandas` and the `local`
+  pyproject extra (`uvicorn[standard]`) are no longer dependencies. Job
+  storage (repository, queue, result store, notifications) is now
+  unconditionally the real Azure adapters - `build_job_service` always
+  requires `AZURE_STORAGE_CONNECTION_STRING`, regardless of
+  `PARTIKKEL_STORAGE_MODE` (which now only selects *forms* storage, see
+  above). **Azure Functions (`func start` / a deployed Function App) is
+  the only way to run this application for real now** - the FastAPI app
+  (`partikkelspredning.api.app`) still exists, but solely so
+  `tests/test_api.py` can exercise the same HTTP routing/schema behavior
+  via `TestClient`; it is never deployed. `PARTIKKEL_LOCAL_DATA_DIR` is
+  removed (see `PARTIKKEL_FORMS_LOCAL_DIR` above).
+- The dynamic `POST /form` endpoint (generate-any-parameter-set-on-demand)
+  is superseded by the pre-rendered forms registry above and removed,
+  along with `api.schemas.FormRequest`. `services.form_renderer
+  .generate_form_html` (renamed from `services.form_service
+  .generate_form_html`, same behavior) is unaffected and still used by the
+  forms registry and the unrelated `public_form_service`.
+
 ## [0.1.9] - 2026-09-15
 
 ### Added
