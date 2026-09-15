@@ -40,17 +40,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `GET /` (the forms registry's landing page) was silently served as
-  Azure's generic "Your Azure Function App is up and running." placeholder
-  page instead of the real index, on both `partikkelspredning-api-staging`
-  and (unreleased, so not yet observed in) production - a well-known Azure
-  Functions behavior where the platform intercepts the bare root before
-  routing to any function unless `AzureWebJobsDisableHomepage=true` is set.
-  `action_deploy.yml` now sets it automatically on every deploy (new
-  `resource-group` input, defaulting to `partikkelspredning-rg` -
-  `deploy_staging.yml` passes `partikkelspredning-staging-rg`), and a new
-  smoke-test step verifies `GET /` actually serves the index page (not
-  just `/health`, which this bug wouldn't have shown up in).
+- `GET /` (the forms registry's landing page) never actually reached
+  `function_app.py`'s `index` function when deployed - found by manually
+  testing the deployed staging app. Two things were both required, neither
+  sufficient alone: `AzureWebJobsDisableHomepage=true` as an app setting
+  (`action_deploy.yml` now sets it automatically on every deploy - new
+  `resource-group` input, defaulting to `partikkelspredning-rg`;
+  `deploy_staging.yml` passes `partikkelspredning-staging-rg`), *and* the
+  function's own route changed from `""` to `"/"` - with only the app
+  setting, Azure returned a bare `204` for `GET /` instead of routing to
+  the function; with neither, it silently served Azure's generic "Your
+  Azure Function App is up and running." placeholder instead. A new
+  smoke-test step in `action_deploy.yml` now verifies `GET /` actually
+  serves the index page on every deploy (not just `/health`, which
+  wouldn't have caught this).
 
 ### Removed
 

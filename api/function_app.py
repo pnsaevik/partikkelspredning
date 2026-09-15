@@ -291,8 +291,14 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
     return _health(req)
 
 
-@app.route(route="", methods=["GET"])
+@app.route(route="/", methods=["GET"])
 def index(req: func.HttpRequest) -> func.HttpResponse:
+    # An empty-string route ("") looks equivalent given host.json's empty
+    # routePrefix, but it isn't: without AzureWebJobsDisableHomepage=true
+    # *and* an explicit "/" route, Azure intercepts GET / with its own
+    # placeholder page (or, with only the app setting, a bare 204) before
+    # it ever reaches this function - found by testing the deployed app
+    # directly (see action_deploy.yml's smoke-test step for "/").
     return _index(req, _get_index_html())
 
 
