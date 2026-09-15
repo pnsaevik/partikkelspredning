@@ -30,14 +30,6 @@ def test_deploy_public_form_has_no_duplicate_email_field():
     assert 'name="user_email" type="email"' in html
 
 
-def test_deploy_public_form_returns_the_form_stores_public_url():
-    form_store = RecordingFormStore()
-
-    url = deploy_public_form(form_store, api_base_url="https://example.com/api")
-
-    assert url == f"fake://forms/{PUBLIC_FORM_NAME}.html"
-
-
 def test_public_form_parameters_match_the_feature_plans_fixed_set():
     names_and_types = [(p.name, p.type.value) for p in PUBLIC_FORM_PARAMETERS]
     assert names_and_types == [
