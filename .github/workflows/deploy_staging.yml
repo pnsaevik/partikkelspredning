@@ -51,6 +51,7 @@ jobs:
     uses: ./.github/workflows/action_deploy.yml
     with:
       app-name: partikkelspredning-api-staging
+      resource-group: partikkelspredning-staging-rg
       environment: staging
 
   azure_integration:

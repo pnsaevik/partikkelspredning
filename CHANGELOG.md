@@ -38,6 +38,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The default `pytest` run (`workflow_push.yml` included) still always
   skips `azure_integration`-marked tests, unchanged.
 
+### Fixed
+
+- `GET /` (the forms registry's landing page) was silently served as
+  Azure's generic "Your Azure Function App is up and running." placeholder
+  page instead of the real index, on both `partikkelspredning-api-staging`
+  and (unreleased, so not yet observed in) production - a well-known Azure
+  Functions behavior where the platform intercepts the bare root before
+  routing to any function unless `AzureWebJobsDisableHomepage=true` is set.
+  `action_deploy.yml` now sets it automatically on every deploy (new
+  `resource-group` input, defaulting to `partikkelspredning-rg` -
+  `deploy_staging.yml` passes `partikkelspredning-staging-rg`), and a new
+  smoke-test step verifies `GET /` actually serves the index page (not
+  just `/health`, which this bug wouldn't have shown up in).
+
 ### Removed
 
 - **Local job storage and the local, uvicorn-hosted deployment mode.**

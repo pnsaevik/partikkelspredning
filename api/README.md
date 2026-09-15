@@ -142,7 +142,12 @@ az functionapp create --resource-group <resource-group> --consumption-plan-locat
 # AzureWebJobsStorage, which the Functions host manages itself)
 az functionapp config appsettings set --name <function-app-name> --resource-group <resource-group> \
   --settings PARTIKKEL_STORAGE_MODE=azure AZURE_STORAGE_CONNECTION_STRING="<connection-string>" \
-             PARTIKKEL_API_BASE_URL="https://<function-app-name>.azurewebsites.net"
+             PARTIKKEL_API_BASE_URL="https://<function-app-name>.azurewebsites.net" \
+             AzureWebJobsDisableHomepage=true
+# ^ without this, Azure intercepts bare `GET /` with its own generic
+# placeholder page before it ever reaches the forms registry's index route
+# - action_deploy.yml sets this automatically on every CI-driven deploy, so
+# this manual step only matters for a first deploy done outside CI.
 
 # deploy this folder's code - must be pushed to GitHub first (see below)
 cd api
