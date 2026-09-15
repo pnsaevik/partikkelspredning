@@ -11,6 +11,7 @@ see the root README's Security section.
     PARTIKKEL_AZURE_TABLE_NAME           azure mode: job metadata table name
     PARTIKKEL_AZURE_QUEUE_NAME           azure mode: job queue name
     PARTIKKEL_AZURE_RESULTS_CONTAINER    azure mode: results blob container name
+    PARTIKKEL_AZURE_FORMS_CONTAINER      azure mode: public forms blob container name
 
 There is deliberately no setting here for a job parameter schema - `POST
 /jobs` accepts parameters as an arbitrary JSON object with no predefined,
@@ -36,6 +37,7 @@ class Settings:
     azure_table_name: str = "jobs"
     azure_queue_name: str = "jobs"
     azure_results_container: str = "results"
+    azure_forms_container: str = "forms"
 
 
 def get_settings() -> Settings:
@@ -51,4 +53,5 @@ def get_settings() -> Settings:
         azure_table_name=os.environ.get("PARTIKKEL_AZURE_TABLE_NAME", "jobs"),
         azure_queue_name=os.environ.get("PARTIKKEL_AZURE_QUEUE_NAME", "jobs"),
         azure_results_container=os.environ.get("PARTIKKEL_AZURE_RESULTS_CONTAINER", "results"),
+        azure_forms_container=os.environ.get("PARTIKKEL_AZURE_FORMS_CONTAINER", "forms"),
     )

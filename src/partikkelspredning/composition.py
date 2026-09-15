@@ -12,6 +12,7 @@ from partikkelspredning.adapters.local.csv_queue import CsvJobQueue
 from partikkelspredning.adapters.local.csv_repository import CsvJobRepository
 from partikkelspredning.adapters.local.filesystem_result_store import FilesystemResultStore
 from partikkelspredning.config import Settings
+from partikkelspredning.ports.form_store import FormStore
 from partikkelspredning.services.job_service import JobService
 
 
@@ -52,3 +53,26 @@ def build_job_service(settings: Settings) -> JobService:
         result_store=result_store,
         notifier=notifier,
     )
+
+
+def build_form_store(settings: Settings) -> FormStore:
+    """Build the `FormStore` used to deploy the public job-submission form.
+
+    Azure only for this iteration (see FEATURE_PLAN.md's "public_form"
+    acceptance criteria) - there is no local-mode form deployment target.
+    """
+    if settings.storage_mode != "azure":
+        raise RuntimeError(
+            "Public form deployment requires PARTIKKEL_STORAGE_MODE=azure "
+            f"(got {settings.storage_mode!r})"
+        )
+
+    # Imported lazily, same reasoning as build_job_service's azure branch.
+    from partikkelspredning.adapters.azure.blob_form_store import BlobFormStore
+
+    connection_string = settings.azure_storage_connection_string
+    if not connection_string:
+        raise RuntimeError(
+            "AZURE_STORAGE_CONNECTION_STRING must be set when PARTIKKEL_STORAGE_MODE=azure"
+        )
+    return BlobFormStore(connection_string, settings.azure_forms_container)
