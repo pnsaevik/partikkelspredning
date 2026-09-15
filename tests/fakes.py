@@ -43,6 +43,15 @@ class FakeResultStore:
         return f"fake://{job_id}/{result_reference}"
 
 
+class RecordingFormStore:
+    def __init__(self) -> None:
+        self.uploaded: Dict[str, str] = {}
+
+    def upload_form_html(self, form_name: str, html_content: str) -> str:
+        self.uploaded[form_name] = html_content
+        return f"fake://forms/{form_name}.html"
+
+
 class RecordingNotificationService:
     def __init__(self) -> None:
         self.completed: List[Tuple[str, str]] = []
