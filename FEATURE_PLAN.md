@@ -7,10 +7,12 @@ As an operator, I want to discover and access pre-configured simulation forms fr
 ## Acceptance Criteria
 
 1. **Form definitions in JSON:** Forms are defined in a single `api/forms.json` file, each with a name, description, and full parameter list (compatible with existing `ParameterDefinition` structure)
-2. **Pre-rendered forms at deployment:** During Azure deployment, all forms in `api/forms.json` are pre-rendered to static HTML files and stored in blob storage under a predictable path (e.g., `/forms/`)
-3. **Index landing page:** A simple `GET /` endpoint returns an HTML page listing all available forms with clickable links to the pre-rendered form pages
-4. **Static file serving:** Pre-rendered forms are served as static HTML assets, not generated on-demand
-5. **No local FastAPI deployment:** The `uvicorn` development/local deployment mode is removed; Azure Functions is the only deployment target going forward
+2. **Pre-rendered forms at startup:** On app startup (both Azure Functions and local dev), all forms in `api/forms.json` are pre-rendered to static HTML files and stored via a `FormsStore` adapter (blob storage in Azure, local disk in development)
+3. **Index landing page:** `GET /` endpoint returns an HTML page listing all available forms with clickable links to the pre-rendered form pages
+4. **Forms metadata endpoint:** `GET /forms` endpoint returns a JSON object with form metadata (id, name, description, parameter definitions) for programmatic access
+5. **Static file serving:** Pre-rendered forms are served as static HTML assets from blob storage (Azure) or disk (development), not generated on-demand
+6. **No local FastAPI deployment:** The `uvicorn` development/local deployment mode is removed; Azure Functions is the only deployment target going forward
+7. **No local adapters:** The `adapters/local/` directory is removed entirely; only Azure adapters remain
 
 ## Feature-Scoped Constraints
 
@@ -25,21 +27,23 @@ As an operator, I want to discover and access pre-configured simulation forms fr
 
 **New files:**
 - `api/forms.json` – Form definitions (name, description, parameters list)
-- `src/partikkelspredning/services/form_registry.py` – Service to load and manage form definitions (business logic, no Azure/FastAPI imports)
-- `src/partikkelspredning/api/routes_index.py` – GET `/` endpoint returning the index page
-- Deployment step (in `api/README.md` or GH Actions) to pre-render forms and upload to blob storage
+- `src/partikkelspredning/services/form_registry.py` – Service to load forms.json and prepare form definitions (business logic, no Azure/FastAPI/pandas imports)
+- `src/partikkelspredning/ports/forms_store.py` – `FormsStore` protocol (port) defining interface for storing/retrieving pre-rendered forms
+- `src/partikkelspredning/adapters/azure/forms_store.py` – Azure blob storage implementation of FormsStore
+- `src/partikkelspredning/api/routes_index.py` – `GET /` and `GET /forms` endpoints
 
 **Modified files:**
 - `src/partikkelspredning/main.py` – Remove or deprecate (local uvicorn is no longer an entry point)
-- `src/partikkelspredning/api/app.py` – Remove form router import (pre-rendered forms replace dynamic `/form` endpoint); add index router
-- `src/partikkelspredning/composition.py` – Remove local adapter composition logic; keep Azure-only (or make it clear this is for Azure only)
-- `api/function_app.py` – Ensure it serves pre-rendered forms as static content (or ensure blob storage is accessible)
-- `.github/workflows/` – Update deployment workflow to include pre-rendering step
-- `api/README.md` – Update to reflect Azure-only deployment
+- `src/partikkelspredning/api/app.py` – Remove dynamic `/form` endpoint and router; add index router with GET / and GET /forms; trigger form pre-rendering on startup
+- `src/partikkelspredning/composition.py` – Remove local adapter composition logic; instantiate Azure FormsStore
+- `api/function_app.py` – Trigger form pre-rendering on startup; ensure FormsStore is initialized
+- `src/partikkelspredning/config.py` – Add configuration for forms.json path (default `api/forms.json` relative to package)
 
 **Removed/deprecated:**
-- `src/partikkelspredning/adapters/local/` – Can be removed entirely once local deployment is confirmed gone
-- `uvicorn` from dependencies (if no other use case exists)
+- `src/partikkelspredning/adapters/local/` – Removed entirely
+- `src/partikkelspredning/services/form_service.py` – Dynamic form generation (replace with pre-rendered approach); tests updated accordingly
+- `src/partikkelspredning/api/routes_form.py` – Dynamic `/form` endpoint removed
+- `uvicorn` from dependencies
 
 ### JSON Schema (api/forms.json)
 
@@ -70,27 +74,33 @@ As an operator, I want to discover and access pre-configured simulation forms fr
 ### Implementation Approach
 
 1. **Phase 2 (Implementation):**
-   - Write tests for `form_registry` service (loading JSON, validating structure)
-   - Implement form registry to parse `api/forms.json` (pure function, no framework deps)
-   - Write tests for index route (mocked form registry)
-   - Implement GET `/` route returning HTML with links to pre-rendered forms
-   - Create pre-rendering utility (generates HTML files from form definitions)
-   - Update deployment workflow to call pre-renderer and upload to blob storage
-   - Remove local uvicorn entry point and adapters
+   - Write tests for `form_registry` service (loading JSON, validating structure, creating ParameterDefinition objects)
+   - Implement form registry to parse `api/forms.json` into Form objects with ParameterDefinition lists
+   - Create `FormsStore` protocol in `ports/forms_store.py` (interface for storing/retrieving pre-rendered HTML)
+   - Implement `AzureFormsStore` adapter (uses blob storage to store/serve pre-rendered forms)
+   - Write tests for form pre-rendering utility (generates HTML from Form definitions)
+   - Implement form pre-rendering in startup sequence (app initialization calls pre-rendering)
+   - Write tests for index routes (`GET /` returns HTML, `GET /forms` returns JSON metadata)
+   - Implement `GET /` and `GET /forms` endpoints
+   - Remove local adapters, uvicorn entry point, and dynamic form generation (`routes_form.py`, `form_service.py`)
+   - Update composition root to use Azure-only setup
 
 2. **Phase 3 (Polish):**
-   - Verify all existing tests still pass (form generation tests may need updating)
+   - Verify all existing tests pass (form generation tests may need removal/updating)
    - Run security audit (no secrets in forms.json or pre-rendered HTML)
-   - Update README and api/README.md to reflect Azure-only deployment
+   - Update README and api/README.md to reflect Azure-only deployment and new endpoints
    - Update CHANGELOG.md
    - Verify index page and forms render correctly in staging (Azurite or real blob storage)
+   - Test startup pre-rendering behavior (verify forms are rendered on first request)
 
 ## Key Decisions
 
-1. **Pre-rendering at deployment (not runtime):** Keeps the form list static and fast; changes to forms require a new deployment
-2. **Single forms.json file:** Simpler to manage than a directory; can grow to a forms/ directory later if needed
-3. **JSON-based form definitions:** Decoupled from Python code; non-developers can add forms without code changes
-4. **Removed local FastAPI:** Simplifies the codebase and CI/CD; Azure Functions is the canonical deployment
+1. **Pre-rendering at app startup (not deployment time):** Forms are pre-rendered when the app initializes, stored in blob storage via FormsStore adapter. This keeps runtime behavior testable and consistent across development/production.
+2. **FormsStore port/adapter pattern:** Pre-rendered forms are stored/retrieved via a protocol, allowing different implementations (Azure blob storage in production, local disk in testing). Maintains architectural flexibility.
+3. **Single forms.json file:** Simpler to manage than a directory; can grow to a forms/ directory later if needed
+4. **JSON-based form definitions:** Decoupled from Python code; non-developers can add forms without code changes
+5. **Removed local adapters and FastAPI:** Simplifies the codebase; Azure Functions is the only deployment target. Reduces test surface and removes unused code.
+6. **GET / for HTML index, GET /forms for JSON metadata:** Provides both human-discoverable (HTML with links) and machine-readable (JSON) interfaces
 
 ## Alternatives Considered
 
@@ -98,10 +108,11 @@ As an operator, I want to discover and access pre-configured simulation forms fr
 2. **Forms as Python datafiles:** Rejected because JSON is more portable and allows non-devs to manage forms
 3. **Keep local mode alongside Azure:** Rejected because no users rely on it, and it adds maintenance burden
 
-## Blockers / Open Questions
+## Design Decisions to Finalize During Phase 2
 
-- How should pre-rendered forms be stored in blob storage? (e.g., a container named `forms`, paths like `/forms/{form_id}.html`)
-- Should the form index page be pre-rendered once at deployment, or generated dynamically at request time?
-- Do we need a fallback if blob storage is unavailable, or assume it always is during request handling?
+- **Blob storage path structure:** Forms will be stored as `/forms/{form_id}.html` in blob storage; index page links point to these paths
+- **Index page caching:** Index page (HTML list of forms) is pre-rendered once at startup, then cached. Changes to forms.json require app restart.
+- **Missing forms.json handling:** If forms.json is not found on startup, app logs a warning and continues with an empty forms list (graceful degradation)
+- **Concurrent startup:** If app starts in multiple instances simultaneously, all will try to pre-render; blob storage PUT operations are idempotent, so this is safe
 
-(These will be resolved during Phase 2 scoping; no architectural blockers identified.)
+(No architectural blockers identified.)
