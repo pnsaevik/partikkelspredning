@@ -51,7 +51,7 @@ from partikkelspredning.domain.errors import (
     JobNotFoundError,
     JobOwnershipError,
 )
-from partikkelspredning.services.form_service import generate_form_html
+from partikkelspredning.services.form_renderer import generate_form_html
 from partikkelspredning.services.job_service import JobService
 
 ModelT = TypeVar("ModelT", bound=BaseModel)

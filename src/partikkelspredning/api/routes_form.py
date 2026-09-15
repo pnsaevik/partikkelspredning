@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 from partikkelspredning.api.dependencies import get_settings_dep
 from partikkelspredning.api.schemas import FormRequest
 from partikkelspredning.config import Settings
-from partikkelspredning.services.form_service import generate_form_html
+from partikkelspredning.services.form_renderer import generate_form_html
 
 router = APIRouter(tags=["form"])
 

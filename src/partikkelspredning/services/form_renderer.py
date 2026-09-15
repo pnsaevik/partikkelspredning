@@ -1,28 +1,38 @@
-"""Static HTML form generation.
+"""Static HTML form generation and the forms-registry pre-rendering pipeline.
 
-Turns a list of `ParameterDefinition`s into a single, dependency-free HTML
-page: a plain `<form>` with one labelled input per parameter (using the
-appropriate `type=` attribute and basic client-side validation), a submit
-button, and a small inline `<script>` that POSTs the values as JSON to the
-configured API base URL and shows the returned job ID or an error message.
+`generate_form_html` turns a list of `ParameterDefinition`s into a single,
+dependency-free HTML page: a plain `<form>` with one labelled input per
+parameter (using the appropriate `type=` attribute and basic client-side
+validation), a submit button, and a small inline `<script>` that POSTs the
+values as JSON to the configured API base URL and shows the returned job ID
+or an error message.
 
 This module is presentation only. `POST /jobs` itself accepts parameters as
 an arbitrary JSON object with no predefined schema (see
 `partikkelspredning.domain.parameters`) - it never validates against the
 definitions used to generate a given form. Whether submitted values are
 actually usable is for the compute server that eventually claims the job to
-decide, not this form or the submission API. The generated page's
-client-side type checks are purely a UX convenience for whichever form this
-happens to be. Nothing here is HTML-specific business logic, so it stays
-out of the domain layer.
+decide, not this form. The generated page's client-side type checks are
+purely a UX convenience for whichever form this happens to be. Nothing here
+is HTML-specific business logic, so it stays out of the domain layer.
+
+`render_forms`/`render_index_html`/`prerender_and_store` build on
+`generate_form_html` for the forms registry (see FEATURE_PLAN.md's
+"multiple_forms"): every `Form` loaded by `services.form_registry` is
+rendered and uploaded via a `FormStore` at startup, and an index page
+linking to each is rendered alongside it. The pre-existing, unrelated
+single "public form" feature (`services.public_form_service`) also reuses
+`generate_form_html` directly.
 """
 from __future__ import annotations
 
 import json
 from html import escape
-from typing import List
+from typing import Dict, List
 
+from partikkelspredning.domain.forms import Form
 from partikkelspredning.domain.parameters import ParameterDefinition, ParameterType
+from partikkelspredning.ports.form_store import FormStore
 
 _INPUT_TYPE = {
     ParameterType.INTEGER: "number",
@@ -160,3 +170,53 @@ def generate_form_html(
 </body>
 </html>
 """
+
+
+def render_forms(forms: List[Form], *, api_base_url: str) -> Dict[str, str]:
+    """Render one standalone HTML page per form; returns `{form.id: html}`."""
+    return {
+        form.id: generate_form_html(form.parameters, api_base_url=api_base_url, title=form.name)
+        for form in forms
+    }
+
+
+def render_index_html(forms: List[Form], form_urls: Dict[str, str]) -> str:
+    """Render a static landing page linking to each form's pre-rendered URL."""
+    items_html = "\n".join(
+        f"""    <li>
+      <a href="{escape(form_urls[form.id], quote=True)}">{escape(form.name)}</a>
+      <p class="description">{escape(form.description)}</p>
+    </li>"""
+        for form in forms
+    )
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Available simulation forms</title>
+<style>
+  body {{ font-family: sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }}
+  li {{ margin-bottom: 1.25rem; }}
+  .description {{ margin: 0.25rem 0 0; color: #555; font-size: 0.9em; }}
+</style>
+</head>
+<body>
+<h1>Available simulation forms</h1>
+<ul>
+{items_html}
+</ul>
+</body>
+</html>
+"""
+
+
+def prerender_and_store(forms: List[Form], form_store: FormStore, *, api_base_url: str) -> Dict[str, str]:
+    """Render every form and upload it via `form_store`; returns `{form.id: url}`.
+
+    Called once at startup (see `api.app.create_app`'s startup handler and
+    `api.function_app`'s lazily cached singletons) so forms are served as
+    pre-rendered static assets rather than generated per-request.
+    """
+    rendered = render_forms(forms, api_base_url=api_base_url)
+    return {form.id: form_store.upload_form_html(form.id, rendered[form.id]) for form in forms}
