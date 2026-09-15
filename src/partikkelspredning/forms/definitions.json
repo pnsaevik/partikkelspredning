@@ -1,0 +1,60 @@
+{
+  "forms": [
+    {
+      "id": "standard_resolution",
+      "name": "Standard Resolution Simulation",
+      "description": "A baseline 1km resolution simulation over 30 days",
+      "parameters": [
+        {
+          "name": "resolution",
+          "type": "integer",
+          "description": "Grid resolution in meters"
+        },
+        {
+          "name": "duration",
+          "type": "integer",
+          "description": "Simulation duration in days"
+        }
+      ]
+    },
+    {
+      "id": "high_resolution",
+      "name": "High Resolution Simulation",
+      "description": "A finer 100m resolution simulation over a shorter 7-day window",
+      "parameters": [
+        {
+          "name": "resolution",
+          "type": "integer",
+          "description": "Grid resolution in meters"
+        },
+        {
+          "name": "duration",
+          "type": "integer",
+          "description": "Simulation duration in days"
+        },
+        {
+          "name": "experiment",
+          "type": "text",
+          "description": "Name of the experiment"
+        }
+      ]
+    },
+    {
+      "id": "single_point_release",
+      "name": "Single Point Release",
+      "description": "A single-point particle release for a fixed duration",
+      "parameters": [
+        {
+          "name": "duration",
+          "type": "float",
+          "description": "Simulation duration in days"
+        },
+        {
+          "name": "release_depth",
+          "type": "float",
+          "description": "Release depth in meters below sea surface"
+        }
+      ]
+    }
+  ]
+}

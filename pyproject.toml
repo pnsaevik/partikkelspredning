@@ -34,6 +34,9 @@ azure = ["azure-functions", "azure-data-tables", "azure-storage-queue", "azure-s
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"partikkelspredning.forms" = ["definitions.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # "api" is a separate deployment unit (see api/README.md), deliberately
