@@ -6,7 +6,7 @@ see the root README's Security section.
 
     PARTIKKEL_STORAGE_MODE               "local" (default) or "azure"
     PARTIKKEL_API_BASE_URL               API base URL baked into generated forms
-    PARTIKKEL_LOCAL_DATA_DIR             local mode: where CSV/results files live
+    PARTIKKEL_FORMS_LOCAL_DIR            local mode: where pre-rendered forms are written
     AZURE_STORAGE_CONNECTION_STRING      azure mode: shared connection string
     PARTIKKEL_AZURE_TABLE_NAME           azure mode: job metadata table name
     PARTIKKEL_AZURE_QUEUE_NAME           azure mode: job queue name
@@ -30,7 +30,7 @@ class Settings:
     api_base_url: str
 
     # local mode
-    local_data_dir: Path = Path("./data")
+    forms_local_dir: Path = Path("./data/forms")
 
     # azure mode
     azure_storage_connection_string: str = ""
@@ -48,7 +48,7 @@ def get_settings() -> Settings:
     return Settings(
         storage_mode=storage_mode,
         api_base_url=os.environ.get("PARTIKKEL_API_BASE_URL", "http://localhost:8000"),
-        local_data_dir=Path(os.environ.get("PARTIKKEL_LOCAL_DATA_DIR", "./data")),
+        forms_local_dir=Path(os.environ.get("PARTIKKEL_FORMS_LOCAL_DIR", "./data/forms")),
         azure_storage_connection_string=os.environ.get("AZURE_STORAGE_CONNECTION_STRING", ""),
         azure_table_name=os.environ.get("PARTIKKEL_AZURE_TABLE_NAME", "jobs"),
         azure_queue_name=os.environ.get("PARTIKKEL_AZURE_QUEUE_NAME", "jobs"),

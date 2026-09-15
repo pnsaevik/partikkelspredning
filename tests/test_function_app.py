@@ -3,10 +3,11 @@
 Each `@app.route`-decorated function is a thin wrapper around a plain
 `_verb_noun(req, ...)` function (see that module's docstring) - these tests
 call those directly with a hand-built `func.HttpRequest`, so no Azure
-Functions host or emulator is needed. Uses the real local (CSV-backed)
-adapters via `local_settings` (see conftest.py), mirroring
-`tests/test_api.py`'s coverage of the equivalent FastAPI routes so the two
-hosting modes are verified to behave the same way.
+Functions host or emulator is needed. Job storage is always Azure now (see
+`partikkelspredning.composition.build_job_service`), so - mirroring
+`tests/test_api.py` - these tests use a fakes-backed `JobService` (see
+`tests/fakes.py`) rather than the real composition root; that end-to-end
+coverage now lives solely in `tests/azure_integration/`.
 """
 from __future__ import annotations
 
@@ -24,7 +25,6 @@ from function_app import (
     _health,
     _submit_job,
 )
-from partikkelspredning.composition import build_job_service
 
 
 def _request(method: str, url: str, *, json_body=None, route_params=None) -> func.HttpRequest:
@@ -37,11 +37,6 @@ def _request(method: str, url: str, *, json_body=None, route_params=None) -> fun
         route_params=route_params or {},
         body=body,
     )
-
-
-@pytest.fixture
-def job_service(local_settings):
-    return build_job_service(local_settings)
 
 
 def _valid_payload():
@@ -155,9 +150,9 @@ def test_complete_without_claiming_is_a_conflict(job_service):
     assert response.status_code == 409
 
 
-def test_generate_form_returns_html(local_settings):
+def test_generate_form_returns_html(settings):
     payload = {"parameters": [{"name": "resolution", "type": "integer", "description": "Grid resolution"}]}
-    response = _generate_form(_request("POST", "/form", json_body=payload), local_settings)
+    response = _generate_form(_request("POST", "/form", json_body=payload), settings)
     assert response.status_code == 200
     assert "text/html" in response.mimetype
     assert 'name="resolution"' in response.get_body().decode()

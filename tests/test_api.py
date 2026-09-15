@@ -1,8 +1,16 @@
 """A small number of FastAPI endpoint tests.
 
-Uses the real local (CSV-backed) adapters via `local_settings` (see
-conftest.py) rather than fakes, so these also exercise the composition root
-end to end - not just the service layer.
+Job storage is always Azure now (see
+`partikkelspredning.composition.build_job_service`), so these tests inject
+a fakes-backed `JobService` (see `tests/fakes.py`/`conftest.py`) via
+`create_app(job_service=...)` rather than exercising the real composition
+root end to end - that coverage now lives solely in
+`tests/azure_integration/` (excluded by default; requires real/emulated
+Azure Storage). These tests exercise HTTP routing/schema behavior against
+the same business logic `tests/test_job_service.py` already covers
+directly. Forms-registry startup pre-rendering still uses a real
+`LocalFormStore` (see `settings` in conftest.py), since that has no Azure
+dependency.
 """
 from __future__ import annotations
 
@@ -13,8 +21,8 @@ from partikkelspredning.api.app import create_app
 
 
 @pytest.fixture
-def client(local_settings):
-    app = create_app(settings=local_settings)
+def client(settings, job_service):
+    app = create_app(settings=settings, job_service=job_service)
     return TestClient(app)
 
 
