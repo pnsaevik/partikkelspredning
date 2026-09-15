@@ -241,18 +241,20 @@ Before signaling completion:
 7. **Review changes for compliance:**
    - Code style and paradigm consistency (see "Code Style & Project Paradigm" below, including its noted exceptions)
    - No unintended side effects, and no violation of the layer import table in "Architecture" above
+8. **Push and open the pull request to main:**
+   - Push the feature branch to origin
+   - Open the pull request using the Final Walkthrough Format below as its
+     description (summary, diff review, decision log, alternatives
+     considered, testing verification, security considerations)
+   - This is the completion signal for Phase 3 — do not wait for a
+     separate go-ahead to push or open the PR once steps 1-7 pass
 
 ### Phase 4: Review & Walkthrough (Collaborative)
-1. I create a pull request to main when Phase 3 is complete
-2. PR includes a walkthrough with:
-   - Summary of changes
-   - Reasoning and alternatives considered
-   - Any security or architectural notes
-   - Suggestions for future improvements (nice-to-haves removed in Phase 3)
-3. Address feedback or iterate further:
+The PR opened at the end of Phase 3 is this phase's starting point.
+1. Address feedback or iterate further:
    - New commits should be added to the branch with PR comments explaining the changes
    - Do not return to Phase 2; stay in Phase 4 review mode
-4. After approval: merge to main
+2. After approval: merge to main
 
 ## Feature-Scoped Constraints & Fail-Fast
 
