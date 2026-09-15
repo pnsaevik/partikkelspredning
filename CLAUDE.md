@@ -246,8 +246,21 @@ Before signaling completion:
    - Open the pull request using the Final Walkthrough Format below as its
      description (summary, diff review, decision log, alternatives
      considered, testing verification, security considerations)
-   - This is the completion signal for Phase 3 — do not wait for a
-     separate go-ahead to push or open the PR once steps 1-7 pass
+   - Do not wait for a separate go-ahead to push or open the PR once steps
+     1-7 pass — but this step alone is not yet the completion signal for
+     Phase 3, see step 9
+9. **Verify CI passes before signaling Phase 3 complete:**
+   - The push in step 8 triggers `workflow_push.yml` (runs the full pytest
+     suite); opening the PR triggers `workflow_pr_main.yml` (changelog/version
+     gate). Watch both to completion — e.g. `gh run watch` for the push's
+     run, `gh pr checks <PR#> --watch` for the PR's checks — rather than
+     relying on the local `pytest` run from step 3 alone: CI is the
+     authoritative signal, and it can fail for reasons a local run can't
+     catch (a forgotten file, an environment difference, the version/
+     changelog gate).
+   - Only once every CI check on the PR is green may Phase 3 be signaled as
+     complete. If a check fails, fix it, push a new commit, and re-verify —
+     do not signal completion with a red or pending check.
 
 ### Phase 4: Review & Walkthrough (Collaborative)
 The PR opened at the end of Phase 3 is this phase's starting point.
