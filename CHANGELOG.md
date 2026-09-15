@@ -10,14 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Public job-submission form: a fixed parameter set (`resolution`,
-  `duration`, `email`) can now be rendered and deployed as a standalone,
+  `duration`) can now be rendered and deployed as a standalone,
   publicly-readable HTML page in Azure Blob Storage, via
   `scripts/deploy_public_form.py` (Azure-only for this iteration - no local
   fallback). Adds a new `FormStore` port, `BlobFormStore` adapter (uploads
   to a container created with public blob-level read access),
   `domain.public_forms.PUBLIC_FORM_PARAMETERS`, and
   `services.public_form_service.deploy_public_form`, plus the new
-  `PARTIKKEL_AZURE_FORMS_CONTAINER` setting (default `forms`). Unrelated to
+  `PARTIKKEL_AZURE_FORMS_CONTAINER` setting (default `forms`). The
+  notification email is collected by the standard `user_email` field every
+  generated form already has, rather than a separate, redundant `email`
+  parameter (an early draft included one; dropped after testing the
+  deployed form on staging showed it duplicating that field). Unrelated to
   the existing `POST /form` endpoint, which still renders any parameter set
   on demand without deploying it anywhere.
 - A `staging` deployment target for trying out Azure-specific behavior

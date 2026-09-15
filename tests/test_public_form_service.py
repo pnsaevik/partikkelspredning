@@ -14,8 +14,20 @@ def test_deploy_public_form_uploads_html_for_the_fixed_parameter_set():
     html = form_store.uploaded[PUBLIC_FORM_NAME]
     assert 'name="resolution"' in html
     assert 'name="duration"' in html
-    assert 'name="email"' in html
     assert '"https://example.com/api"' in html
+
+
+def test_deploy_public_form_has_no_duplicate_email_field():
+    form_store = RecordingFormStore()
+
+    deploy_public_form(form_store, api_base_url="https://example.com/api")
+
+    html = form_store.uploaded[PUBLIC_FORM_NAME]
+    # Only the standard notification-email field (bound to user_email)
+    # should be present - not a second, redundant "email" input among the
+    # arbitrary parameter fields.
+    assert 'name="email"' not in html
+    assert 'name="user_email" type="email"' in html
 
 
 def test_deploy_public_form_returns_the_form_stores_public_url():
@@ -31,5 +43,4 @@ def test_public_form_parameters_match_the_feature_plans_fixed_set():
     assert names_and_types == [
         ("resolution", "integer"),
         ("duration", "float"),
-        ("email", "text"),
     ]

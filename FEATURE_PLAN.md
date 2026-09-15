@@ -115,3 +115,16 @@ Design for addition of more parameter sets:
 ---
 
 **Ready for Phase 2 (Implementation) once approved.**
+
+## Amendment (Phase 3, during staging verification)
+
+The originally agreed parameter set above included `email` (text) as one of
+the three form fields. Deploying the actual form to the staging environment
+surfaced a duplicate-email UX bug: `form_service.generate_form_html`
+already renders its own dedicated notification-email field (bound to
+`user_email`) on *every* generated form, so the `email` parameter produced
+a second, redundant email input alongside it. Fixed by dropping `email`
+from `domain.public_forms.PUBLIC_FORM_PARAMETERS`, leaving `resolution`
+and `duration` as the only two fixed parameters - the standard `user_email`
+field already covers the "notification email" acceptance criterion on its
+own. No other acceptance criteria are affected.

@@ -253,9 +253,11 @@ regenerate it if that URL changes.
 ### Deploying the public job-submission form
 
 Separately from the `/form` endpoint above, a single fixed parameter set
-(`resolution`, `duration`, `email`) can be deployed as a public, standalone
-HTML page in Azure Blob Storage, so external users can submit a job without
-calling the API directly. This is Azure-only (no local-mode target) and is
+(`resolution`, `duration`) can be deployed as a public, standalone HTML page
+in Azure Blob Storage, so external users can submit a job without calling
+the API directly - the notification email is collected by the standard
+`user_email` field every generated form already has, so it isn't repeated
+as its own parameter. This is Azure-only (no local-mode target) and is
 triggered manually, not by an HTTP endpoint:
 
 ```bash
